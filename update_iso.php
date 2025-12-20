@@ -98,10 +98,28 @@ $filesToUpdate = [
         'url_dir'     => 'https://mirror.yandex.ru/archlinux/iso/latest/',
         'remote_name' => 'archlinux-x86_64.iso',
     ],
-    'NyarchLinux.iso' => [
-        'local_subdir' => 'ArchLinux',
-        'url_dir'     => 'https://mirror.nyarchlinux.moe/',
-        'remote_name' => 'Nyarch_Gnome_25.04.2.iso',
+    'Windows_Server_2022_ru.iso' => [
+        'local_subdir' => 'Windows',
+        'url_dir'     => 'https://software-static.download.prss.microsoft.com/sg/download/888969d5-f34g-4e03-ac9d-1f9786c66749/',
+        'remote_name' => 'SERVER_EVAL_x64FRE_ru-ru.iso',
+        'force_download_without_checksum' => true,
+    ],
+    'Windows_Server_2022_en.iso' => [
+        'local_subdir' => 'Windows',
+        'url_dir'     => 'https://software-static.download.prss.microsoft.com/sg/download/888969d5-f34g-4e03-ac9d-1f9786c66749/',
+        'remote_name' => 'SERVER_EVAL_x64FRE_en-us.iso',
+        'force_download_without_checksum' => true,
+    ],
+    'Windows_Server_2025_ru.iso' => [
+        'local_subdir' => 'Windows',
+        'url_dir'     => 'https://software-static.download.prss.microsoft.com/dbazure/888969d5-f34g-4e03-ac9d-1f9786c66749/',
+        'remote_name' => '26100.1742.240906-0331.ge_release_svc_refresh_SERVER_EVAL_x64FRE_ru-ru.iso',
+        'force_download_without_checksum' => true,
+    ],
+    'Windows_Server_2025_en.iso' => [
+        'local_subdir' => 'Windows',
+        'url_dir'     => 'https://software-static.download.prss.microsoft.com/dbazure/888969d5-f34g-4e03-ac9d-1f9786c66749/',
+        'remote_name' => '26100.1742.240906-0331.ge_release_svc_refresh_SERVER_EVAL_x64FRE_en-us.iso',
         'force_download_without_checksum' => true,
     ],
 ];
@@ -111,41 +129,107 @@ $cacheDir = __DIR__ . DIRECTORY_SEPARATOR . '.hash_cache';
 
 /**
  * Функция скачивания файла с визуальным прогресс-баром
+ * + защита от зависаний (нет прогресса N секунд)
+ * + несколько попыток скачивания
  */
 function downloadFile(string $url, string $destination): bool
 {
-    $fp = fopen($destination, 'w+');
-    if ($fp === false) {
-        return false;
+    $maxStallSeconds = 60; // сколько секунд допускается без прогресса
+    $maxRetries      = 5;  // сколько раз пробуем скачать файл заново
+
+    $attempt = 0;
+
+    while ($attempt < $maxRetries) {
+        $attempt++;
+        echo "Попытка {$attempt} загрузки: {$url}\n";
+
+        $fp = fopen($destination, 'w+');
+        if ($fp === false) {
+            echo "Не удалось открыть файл для записи: {$destination}\n";
+            return false;
+        }
+
+        $ch = curl_init($url);
+        if ($ch === false) {
+            fclose($fp);
+            echo "Не удалось инициализировать cURL\n";
+            return false;
+        }
+
+        // >>> игнорировать ошибки SSL
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // НЕ проверять сертификат
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);     // НЕ проверять имя хоста
+        // <<<
+        curl_setopt($ch, CURLOPT_FILE, $fp);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 0);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_NOPROGRESS, false);
+        curl_setopt($ch, CURLOPT_FAILONERROR, true);
+
+        $lastDownloaded = 0;
+        $lastChangeTime = time();
+
+        curl_setopt(
+            $ch,
+            CURLOPT_PROGRESSFUNCTION,
+            function ($resource, $downloadSize, $downloaded, $uploadSize, $uploaded)
+            use (&$lastDownloaded, &$lastChangeTime, $maxStallSeconds)
+            {
+                if ($downloadSize > 0) {
+                    $percent = ($downloaded / $downloadSize) * 100;
+                    $filledBars = round($percent / 2); // 50 символов в полосе
+                    $emptyBars = 50 - $filledBars;
+                    $bar = str_repeat('=', $filledBars) . str_repeat(' ', $emptyBars);
+                    printf("\rСкачивание: %3d%% [%s]", round($percent), $bar);
+                }
+
+                // отслеживаем прогресс
+                if ($downloaded > $lastDownloaded) {
+                    $lastDownloaded = $downloaded;
+                    $lastChangeTime = time();
+                } else {
+                    // если за maxStallSeconds не прибавилось ни байта — считаем, что зависло
+                    if ((time() - $lastChangeTime) >= $maxStallSeconds) {
+                        echo "\nОбнаружено зависание скачивания (нет прогресса {$maxStallSeconds} секунд), прерываем.\n";
+                        // Возвращаем ненулевое значение -> cURL прерывает запрос с ошибкой
+                        return 1;
+                    }
+                }
+
+                return 0; // 0 — продолжать
+            }
+        );
+
+        $result    = curl_exec($ch);
+        $curlErrNo = curl_errno($ch);
+        $curlErr   = curl_error($ch);
+
+        curl_close($ch);
+        fclose($fp);
+
+        echo "\n";
+
+        if ($result && $curlErrNo === 0) {
+            echo "Скачивание завершено успешно.\n";
+            return true;
+        }
+
+        echo "Ошибка скачивания (cURL #{$curlErrNo}): {$curlErr}\n";
+
+        // удаляем повреждённый файл, чтобы при следующей попытке начать заново
+        if (file_exists($destination)) {
+            unlink($destination);
+        }
+
+        if ($attempt < $maxRetries) {
+            $sleep = 5 * $attempt; // простая экспоненциальная задержка
+            echo "Повторная попытка через {$sleep} сек...\n";
+            sleep($sleep);
+        }
     }
 
-    $ch = curl_init($url);
-    // >>> игнорировать ошибки SSL
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // НЕ проверять сертификат
-    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);     // НЕ проверять имя хоста
-    // <<<
-    curl_setopt($ch, CURLOPT_FILE, $fp);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 0);
-    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-    curl_setopt($ch, CURLOPT_NOPROGRESS, false);
-
-    curl_setopt($ch, CURLOPT_PROGRESSFUNCTION, function ($resource, $downloadSize, $downloaded, $uploadSize, $uploaded) {
-        if ($downloadSize > 0) {
-            $percent = ($downloaded / $downloadSize) * 100;
-            $filledBars = round($percent / 2); // 50 символов в полосе
-            $emptyBars = 50 - $filledBars;
-            $bar = str_repeat('=', $filledBars) . str_repeat(' ', $emptyBars);
-            printf("\rСкачивание: %3d%% [%s]", round($percent), $bar);
-        }
-    });
-
-    $result = curl_exec($ch);
-    curl_close($ch);
-    fclose($fp);
-
-    echo "\n";
-
-    return $result !== false;
+    echo "Все {$maxRetries} попыток скачивания исчерпаны.\n";
+    return false;
 }
 
 /**
