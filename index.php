@@ -29,7 +29,6 @@ if (is_file($lastRunPath)) {
 }
 
 // Список из конфига для подсчёта отсутствующих
-$configFiles = [];
 $missing = [];
 if (is_file($configPath)) {
     try {
@@ -38,51 +37,61 @@ if (is_file($configPath)) {
             $expectedPath = $filesDir
                 . ($entry->localSubdir !== '' ? DIRECTORY_SEPARATOR . $entry->localSubdir : '')
                 . DIRECTORY_SEPARATOR . $entry->localName;
-            $configFiles[$entry->localName] = $expectedPath;
             if (!is_file($expectedPath)) {
                 $missing[] = [
-                    'name'      => $entry->localName,
-                    'subdir'    => $entry->localSubdir,
-                    'remote'    => $entry->urlDir . ($entry->isLatest() ? '(latest)' : $entry->remoteName),
+                    'name'   => $entry->localName,
+                    'subdir' => $entry->localSubdir,
+                    'remote' => $entry->urlDir . ($entry->isLatest() ? '(latest)' : $entry->remoteName),
                 ];
             }
         }
     } catch (Throwable) {
-        // Конфиг битый — UI всё равно отрисуем без блока missing
+        // конфиг битый — UI отрисуем без блока missing
     }
 }
 
 $items = [];
+$totalSize = 0;
+$totalFiles = 0;
 if (is_dir($filesDir)) {
     foreach (scandir($filesDir) ?: [] as $name) {
         if ($name === '.' || $name === '..' || $name === '.gitkeep') continue;
         $path = $filesDir . DIRECTORY_SEPARATOR . $name;
         if (is_dir($path)) {
             $children = [];
+            $dirSize = 0;
             foreach (scandir($path) ?: [] as $c) {
                 if ($c === '.' || $c === '..' || $c === '.gitkeep') continue;
                 $cp = $path . DIRECTORY_SEPARATOR . $c;
                 if (is_file($cp)) {
+                    $size = (int)filesize($cp);
                     $children[] = [
                         'name'  => $c,
-                        'size'  => filesize($cp),
+                        'size'  => $size,
                         'mtime' => filemtime($cp),
                         'type'  => $hashCache->get($cp) ?? 'sha256:not_computed_yet',
                     ];
+                    $dirSize += $size;
+                    $totalFiles++;
+                    $totalSize += $size;
                 }
             }
             $items[] = [
                 'name'     => $name,
                 'type'     => 'dir',
+                'size'     => $dirSize,
                 'children' => $children,
             ];
         } elseif (is_file($path)) {
+            $size = (int)filesize($path);
             $items[] = [
                 'name'  => $name,
-                'size'  => filesize($path),
+                'size'  => $size,
                 'mtime' => filemtime($path),
                 'type'  => $hashCache->get($path) ?? 'sha256:not_computed_yet',
             ];
+            $totalFiles++;
+            $totalSize += $size;
         }
     }
 }
@@ -97,147 +106,456 @@ if (is_dir($filesDir)) {
 <style>
 :root {
     --bg-1:#06101a;
-    --bg-2:#091425;
+    --bg-2:#0a1830;
+    --surface-1:rgba(255,255,255,0.025);
+    --surface-2:rgba(255,255,255,0.04);
+    --border-1:rgba(255,255,255,0.06);
+    --border-2:rgba(255,255,255,0.1);
+    --text:#e9f3fb;
     --muted:#9fb0c1;
+    --muted-2:#6b7d8f;
     --accent:#56c1ff;
-    --accent-dark:#2ea3dc;
+    --accent-2:#7ad9ff;
+    --accent-soft:rgba(86,193,255,0.12);
     --ok:#4ade80;
     --warn:#fbbf24;
     --err:#f87171;
-    --radius:12px;
+    --radius:14px;
+    --radius-sm:10px;
+    --shadow:0 6px 30px rgba(2,8,23,0.6);
+    --mono:ui-monospace,'JetBrains Mono','Cascadia Code','Fira Code','Courier New',monospace;
 }
 *{box-sizing:border-box}
-html,body{height:100%;margin:0;font-family:Inter,ui-sans-serif,system-ui}
+html,body{height:100%;margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto;font-feature-settings:'cv11','ss01'}
 body{
-    background:radial-gradient(ellipse at 20% 10%, rgba(86,193,255,0.02) 0%, transparent 10%),
-               linear-gradient(180deg,var(--bg-1),var(--bg-2));
-    color:#e9f3fb;
+    background:
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(86,193,255,0.08) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 40% at 100% 100%, rgba(122,217,255,0.04) 0%, transparent 50%),
+        linear-gradient(180deg,var(--bg-1),var(--bg-2));
+    color:var(--text);
+    min-height:100vh;
 }
-.container{max-width:1120px;margin:36px auto;padding:20px;display:flex;flex-direction:column;height:calc(100vh - 72px)}
-header{display:flex;align-items:center;gap:16px;justify-content:space-between;margin-bottom:14px}
-.brand{display:flex;align-items:center;gap:14px}
-.logo-img{width:48px;height:48px;border-radius:10px}
-h1{margin:0;font-size:22px;background:linear-gradient(90deg,var(--accent),#9ae2ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.actions{display:flex;gap:10px;align-items:center}
-.search{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);padding:10px 12px;border-radius:10px;color:inherit;min-width:300px}
-.sort{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);padding:8px 10px;border-radius:10px;color:var(--muted)}
-.view-toggle{background:transparent;border:1px solid rgba(255,255,255,0.06);padding:8px 10px;border-radius:10px;color:var(--muted);cursor:pointer}
+::selection{background:rgba(86,193,255,0.3);color:#fff}
 
-/* Полоса статуса */
-.status-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px;padding:10px 14px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);font-size:13px;color:var(--muted)}
-.status-bar .pill{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;background:rgba(255,255,255,0.04);font-weight:600}
-.status-bar .pill.ok{color:var(--ok)}
-.status-bar .pill.warn{color:var(--warn)}
-.status-bar .pill.err{color:var(--err)}
-.status-bar .pill.muted{color:var(--muted)}
-.status-bar .sep{opacity:.4}
+.container{
+    max-width:min(1600px,94vw);
+    margin:28px auto;
+    padding:0 20px 28px;
+    display:flex;
+    flex-direction:column;
+    gap:16px;
+}
 
-.card{background:rgba(255,255,255,0.015);border-radius:var(--radius);padding:14px;box-shadow:0 6px 30px rgba(2,8,23,0.6);flex:1 1 auto;overflow-y:auto}
+/* ========== Header ========== */
+header{
+    display:flex;
+    align-items:center;
+    gap:16px;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    padding:8px 4px;
+}
+.brand{display:flex;align-items:center;gap:14px;min-width:0}
+.logo-img{width:48px;height:48px;border-radius:12px;box-shadow:0 4px 16px rgba(86,193,255,0.15)}
+h1{
+    margin:0;
+    font-size:24px;
+    font-weight:700;
+    letter-spacing:-0.01em;
+    background:linear-gradient(90deg,#fff 0%, var(--accent-2) 60%, var(--accent) 100%);
+    -webkit-background-clip:text;
+    -webkit-text-fill-color:transparent;
+    background-clip:text;
+}
+.tag{
+    display:inline-block;
+    margin-left:10px;
+    padding:2px 8px;
+    border-radius:999px;
+    background:var(--accent-soft);
+    color:var(--accent);
+    font-size:11px;
+    font-weight:600;
+    letter-spacing:0.02em;
+    vertical-align:middle;
+}
+
+.actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.search{
+    background:var(--surface-1);
+    border:1px solid var(--border-1);
+    padding:11px 14px 11px 38px;
+    border-radius:var(--radius-sm);
+    color:inherit;
+    min-width:320px;
+    font-size:14px;
+    transition:border-color .15s, background .15s;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239fb0c1' stroke-width='2' stroke-linecap='round'><circle cx='11' cy='11' r='7'/><line x1='21' y1='21' x2='16.65' y2='16.65'/></svg>");
+    background-repeat:no-repeat;
+    background-position:12px center;
+}
+.search:focus{outline:none;border-color:rgba(86,193,255,0.4);background-color:rgba(86,193,255,0.04)}
+.sort{
+    background:var(--surface-1);
+    border:1px solid var(--border-1);
+    padding:10px 12px;
+    border-radius:var(--radius-sm);
+    color:var(--text);
+    font-size:13px;
+    cursor:pointer;
+}
+.sort:focus{outline:none;border-color:rgba(86,193,255,0.4)}
+
+/* ========== Status bar ========== */
+.status-bar{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    align-items:center;
+    padding:12px 16px;
+    border-radius:var(--radius);
+    background:linear-gradient(135deg, rgba(86,193,255,0.04), rgba(122,217,255,0.02));
+    border:1px solid var(--border-1);
+    font-size:13px;
+    color:var(--muted);
+    backdrop-filter:blur(8px);
+}
+.pill{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    padding:4px 10px;
+    border-radius:999px;
+    background:var(--surface-2);
+    border:1px solid var(--border-1);
+    font-weight:600;
+    font-size:12px;
+    letter-spacing:0.01em;
+}
+.pill .num{font-variant-numeric:tabular-nums;font-weight:700}
+.pill.ok{color:var(--ok);background:rgba(74,222,128,0.08);border-color:rgba(74,222,128,0.15)}
+.pill.warn{color:var(--warn);background:rgba(251,191,36,0.08);border-color:rgba(251,191,36,0.15)}
+.pill.err{color:var(--err);background:rgba(248,113,113,0.08);border-color:rgba(248,113,113,0.18)}
+.pill.muted{color:var(--muted)}
+.pill.accent{color:var(--accent);background:var(--accent-soft);border-color:rgba(86,193,255,0.2)}
+.sep{opacity:.35;color:var(--muted-2)}
+.status-time{color:var(--muted);font-size:12px}
+.status-time strong{color:var(--text);font-weight:600}
+
+/* ========== Card ========== */
+.card{
+    background:var(--surface-1);
+    border:1px solid var(--border-1);
+    border-radius:var(--radius);
+    padding:16px;
+    box-shadow:var(--shadow);
+    flex:1 1 auto;
+    overflow-y:auto;
+}
 .card::-webkit-scrollbar{width:10px}
-.card::-webkit-scrollbar-thumb{background:linear-gradient(180deg,rgba(86,193,255,0.4),rgba(86,193,255,0.15));border-radius:10px}
-.count{color:var(--muted);font-size:14px;margin-bottom:12px}
-.list{display:grid;gap:12px}
-.row{display:flex;align-items:center;gap:14px;padding:14px;border-radius:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);transition:all .18s ease}
-.row:hover{transform:translateY(-3px);background:rgba(255,255,255,0.04)}
-.row:focus{outline:2px solid rgba(86,193,255,0.18);outline-offset:4px;transform:translateY(-3px)}
-.thumb{width:48px;height:48px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.06);color:var(--accent);font-size:14px;font-weight:600;box-shadow:0 0 8px rgba(86,193,255,0.06) inset}
-.thumb.folder{background:linear-gradient(135deg,var(--accent),#7ad9ff);color:#012;font-size:18px}
-.thumb.missing{background:rgba(248,113,113,0.12);color:var(--err)}
-.icon{width:28px;height:28px;display:block}
-.meta{flex:1;min-width:0}
-.filename{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:8px}
-.sub{font-size:13px;color:var(--muted);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.match-badge{display:inline-block;margin-left:8px;background:rgba(86,193,255,0.15);color:var(--accent);padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700}
-.btns{display:flex;align-items:center;gap:10px}
-.primary{background:linear-gradient(90deg,var(--accent),#7ad9ff);padding:9px 14px;border-radius:10px;border:none;color:#012;font-weight:700;text-decoration:none;transition:transform .12s,box-shadow .12s}
-.primary:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(46,163,220,0.15)}
-.primary:active{transform:translateY(0)}
-.ghost{background:transparent;padding:9px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);color:var(--muted);cursor:pointer;transition:background .12s}
-.ghost:hover{background:rgba(255,255,255,0.06);color:#fff}
-.copy-group{position:relative}
-.copy-main{padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.08);border:none;color:#e6eef6;cursor:pointer}
-.dd-menu{display:none;position:absolute;right:0;top:calc(100% + 8px);min-width:220px;background:#071225;border-radius:10px;padding:8px;box-shadow:0 8px 30px rgba(2,8,23,0.9);z-index:9999}
-.dd-menu.show{display:block;animation:fadeIn .15s ease}
-.dd-item{display:block;padding:9px;border-radius:8px;color:var(--muted);text-decoration:none;font-size:13px;transition:background .12s}
-.dd-item:hover{background:rgba(255,255,255,0.04);color:#fff}
-.children{margin-top:8px;margin-left:62px;display:grid;gap:8px;overflow:hidden;max-height:0;opacity:0;transition:max-height 320ms cubic-bezier(.2,.9,.2,1),opacity 220ms ease}
-.children.open{opacity:1;overflow:visible}
-.indent{padding-left:4px}
-.toggle-arrow{transition:transform 220ms ease}
-.toggle-arrow.expanded{transform:rotate(180deg)}
-.toast{position:fixed;right:20px;bottom:20px;background:#06202a;padding:12px 14px;border-radius:10px;color:#cfeefc;box-shadow:0 8px 30px rgba(2,8,23,0.6);display:none;z-index:200}
-.toast.show{display:block;animation:fadeIn .2s ease}
-@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
-.row.menu-open,.row.menu-open:hover{transform:none!important;background:rgba(255,255,255,0.02)!important}
+.card::-webkit-scrollbar-track{background:transparent}
+.card::-webkit-scrollbar-thumb{background:linear-gradient(180deg,rgba(86,193,255,0.35),rgba(86,193,255,0.1));border-radius:10px}
+.card::-webkit-scrollbar-thumb:hover{background:linear-gradient(180deg,rgba(86,193,255,0.5),rgba(86,193,255,0.2))}
 
-/* Skeleton loader */
-.skel-row{display:flex;align-items:center;gap:14px;padding:14px;border-radius:12px;background:linear-gradient(90deg,rgba(255,255,255,0.02),rgba(255,255,255,0.015));border:1px solid rgba(255,255,255,0.03);}
-.skel-thumb{width:48px;height:48px;border-radius:10px;background:linear-gradient(90deg,rgba(255,255,255,0.02),rgba(255,255,255,0.06));}
-.skel-meta{flex:1}
-.skel-line{height:12px;border-radius:6px;background:linear-gradient(90deg,#0b1014 0%, #1b2a36 50%, #0b1014 100%);background-size:200% 100%;animation:shimmer 1.1s linear infinite}
-.skel-sub{height:10px;width:60%;border-radius:6px;margin-top:8px;background:linear-gradient(90deg,#071016 0%, #12202a 50%, #071016 100%);background-size:200% 100%;animation:shimmer 1.1s linear infinite}
+.count{color:var(--muted);font-size:13px;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.count .num{color:var(--text);font-weight:700;font-variant-numeric:tabular-nums}
+
+.list{display:grid;gap:10px}
+
+/* ========== Row ========== */
+.row{
+    display:grid;
+    grid-template-columns:auto 1fr auto;
+    align-items:center;
+    gap:14px;
+    padding:14px 16px;
+    border-radius:var(--radius);
+    background:var(--surface-1);
+    border:1px solid var(--border-1);
+    transition:transform .18s cubic-bezier(.2,.9,.2,1), background .18s, border-color .18s, box-shadow .18s;
+}
+.row:hover{
+    transform:translateY(-2px);
+    background:var(--surface-2);
+    border-color:var(--border-2);
+    box-shadow:0 8px 24px rgba(2,8,23,0.4);
+}
+.row:focus{outline:none;border-color:rgba(86,193,255,0.35);box-shadow:0 0 0 3px rgba(86,193,255,0.12)}
+.row.dir-row{cursor:pointer}
+.row.menu-open,.row.menu-open:hover{transform:none!important}
+
+.thumb{
+    width:44px;height:44px;
+    border-radius:11px;
+    display:flex;align-items:center;justify-content:center;
+    background:var(--surface-2);
+    color:var(--accent);
+    box-shadow:0 0 0 1px rgba(255,255,255,0.04) inset;
+    flex-shrink:0;
+}
+.thumb.folder{
+    background:linear-gradient(135deg,var(--accent),#7ad9ff);
+    color:#012;
+    box-shadow:0 4px 12px rgba(86,193,255,0.2);
+}
+.thumb.missing{background:rgba(248,113,113,0.12);color:var(--err);box-shadow:0 0 0 1px rgba(248,113,113,0.2) inset}
+.icon{width:24px;height:24px;display:block}
+.thumb.folder .icon{width:22px;height:22px}
+
+.meta{min-width:0;display:flex;flex-direction:column;gap:6px}
+.filename{
+    font-size:15px;
+    font-weight:600;
+    letter-spacing:-0.005em;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    display:flex;
+    align-items:center;
+    gap:8px;
+}
+
+/* sub: flex-wrap, чтобы хэш мог переноситься на новую строку при нехватке места */
+.sub{
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    gap:4px 10px;
+    font-size:12.5px;
+    color:var(--muted);
+    min-width:0;
+}
+.sub .field{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.sub .field .ico{width:13px;height:13px;opacity:.7}
+.sub .dot{color:var(--muted-2);opacity:.4;font-weight:700}
+
+.match-badge{
+    display:inline-block;margin-left:8px;
+    background:var(--accent-soft);color:var(--accent);
+    padding:2px 8px;border-radius:999px;
+    font-size:11px;font-weight:700;letter-spacing:0.02em;
+}
+
+.btns{display:flex;align-items:center;gap:8px;flex-shrink:0}
+
+/* ========== Buttons ========== */
+.primary{
+    background:linear-gradient(90deg,var(--accent),var(--accent-2));
+    padding:9px 14px;
+    border-radius:var(--radius-sm);
+    border:none;
+    color:#012;
+    font-weight:700;
+    font-size:13px;
+    text-decoration:none;
+    transition:transform .12s, box-shadow .12s, filter .12s;
+    display:inline-flex;align-items:center;gap:6px;
+    cursor:pointer;
+    white-space:nowrap;
+}
+.primary:hover{transform:translateY(-1px);box-shadow:0 8px 22px rgba(86,193,255,0.25);filter:brightness(1.05)}
+.primary:active{transform:translateY(0)}
+.ghost{
+    background:transparent;
+    padding:9px 12px;
+    border-radius:var(--radius-sm);
+    border:1px solid var(--border-1);
+    color:var(--muted);
+    cursor:pointer;
+    font-size:13px;
+    transition:background .15s, color .15s, border-color .15s;
+    white-space:nowrap;
+}
+.ghost:hover{background:var(--surface-2);color:var(--text);border-color:var(--border-2)}
+
+/* ========== Dropdown ========== */
+.copy-group{position:relative}
+.dd-menu{
+    display:none;
+    position:absolute;
+    right:0;
+    top:calc(100% + 8px);
+    min-width:240px;
+    background:#0a1628;
+    border:1px solid var(--border-2);
+    border-radius:var(--radius-sm);
+    padding:6px;
+    box-shadow:0 12px 36px rgba(2,8,23,0.7);
+    z-index:9999;
+}
+.dd-menu.show{display:block;animation:fadeIn .15s ease}
+.dd-menu.flip-up{top:auto;bottom:calc(100% + 8px)}
+.dd-item{
+    display:flex;align-items:center;gap:10px;
+    padding:10px 12px;
+    border-radius:8px;
+    color:var(--muted);
+    text-decoration:none;
+    font-size:13px;
+    cursor:pointer;
+    transition:background .12s,color .12s;
+}
+.dd-item:hover{background:var(--surface-2);color:var(--text)}
+.dd-item .ico{width:14px;height:14px;flex-shrink:0;opacity:.7}
+
+/* ========== Children expand ========== */
+.children{
+    margin-top:6px;
+    margin-left:58px;
+    display:grid;
+    gap:8px;
+    overflow:hidden;
+    max-height:0;
+    opacity:0;
+    transition:max-height 320ms cubic-bezier(.2,.9,.2,1), opacity 220ms ease;
+}
+.children.open{opacity:1;overflow:visible}
+.children .row{padding:12px 14px;background:rgba(255,255,255,0.015)}
+.toggle-arrow{transition:transform 220ms ease;display:inline-block;font-size:14px}
+.toggle-arrow.expanded{transform:rotate(180deg)}
+
+/* ========== Hash chip ========== */
+.hash-clickable{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    padding:3px 10px;
+    border-radius:7px;
+    font-family:var(--mono);
+    font-size:11.5px;
+    font-weight:500;
+    color:var(--accent);
+    background:var(--accent-soft);
+    border:1px solid rgba(86,193,255,0.15);
+    cursor:pointer;
+    transition:all .15s ease;
+    user-select:all;
+    word-break:break-all;
+    max-width:100%;
+    line-height:1.4;
+}
+.hash-clickable:hover{
+    color:#9ae2ff;
+    background:rgba(86,193,255,0.18);
+    border-color:rgba(86,193,255,0.3);
+}
+.hash-clickable.copied{color:var(--ok);background:rgba(74,222,128,0.12);border-color:rgba(74,222,128,0.3)}
+.hash-clickable .ico{width:11px;height:11px;opacity:.6;flex-shrink:0}
+.hash-not-ready{
+    color:var(--muted-2);
+    font-style:italic;
+    font-size:12px;
+    font-family:var(--mono);
+}
+
+/* ========== Toast ========== */
+.toast{
+    position:fixed;right:20px;bottom:20px;
+    background:#0a1628;
+    border:1px solid var(--border-2);
+    padding:11px 16px;
+    border-radius:var(--radius-sm);
+    color:var(--text);
+    box-shadow:0 12px 36px rgba(2,8,23,0.7);
+    display:none;z-index:200;
+    font-size:13px;
+}
+.toast.show{display:flex;align-items:center;gap:8px;animation:fadeIn .2s ease}
+.toast .ico{width:16px;height:16px;color:var(--ok)}
+
+/* ========== Skeleton ========== */
+.skel-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:14px;padding:14px 16px;border-radius:var(--radius);background:var(--surface-1);border:1px solid var(--border-1)}
+.skel-thumb{width:44px;height:44px;border-radius:11px;background:linear-gradient(90deg,rgba(255,255,255,0.02),rgba(255,255,255,0.06));}
+.skel-meta{display:flex;flex-direction:column;gap:8px}
+.skel-line{height:13px;border-radius:6px;background:linear-gradient(90deg,#0b1014 0%, #1b2a36 50%, #0b1014 100%);background-size:200% 100%;animation:shimmer 1.1s linear infinite}
+.skel-sub{height:11px;width:60%;border-radius:6px;background:linear-gradient(90deg,#071016 0%, #12202a 50%, #071016 100%);background-size:200% 100%;animation:shimmer 1.1s linear infinite}
+
+/* ========== Tooltip ========== */
+.tooltip{position:relative}
+.tooltip[data-title]:hover::after{
+    content:attr(data-title);
+    position:absolute;bottom:calc(100% + 8px);left:50%;
+    transform:translateX(-50%);
+    background:rgba(2,8,23,0.95);color:var(--text);
+    padding:6px 10px;border-radius:6px;
+    font-size:12px;white-space:nowrap;
+    pointer-events:none;
+    border:1px solid var(--border-2);
+    z-index:100;
+}
+
+/* ========== Missing block ========== */
+.missing-block{
+    margin-top:18px;
+    padding:14px 16px;
+    border-radius:var(--radius);
+    background:linear-gradient(135deg, rgba(248,113,113,0.04), rgba(248,113,113,0.02));
+    border:1px dashed rgba(248,113,113,0.25);
+}
+.missing-block h2{
+    margin:0 0 12px 0;
+    font-size:14px;
+    font-weight:600;
+    color:var(--err);
+    display:flex;align-items:center;gap:8px;
+}
+.missing-block h2 .hint{margin-left:auto;font-size:12px;font-weight:400;color:var(--muted)}
+.missing-block .row{background:rgba(255,255,255,0.015)}
+.missing-block .row:hover{transform:none;background:rgba(255,255,255,0.02)}
+
+/* ========== Animations ========== */
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 @keyframes shimmer{to{background-position:-200% 0}}
 
-.tooltip{position:relative}
-.tooltip[data-title]:hover::after{content:attr(data-title);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:rgba(2,8,23,0.9);color:#cfeefc;padding:6px 8px;border-radius:6px;font-size:12px;white-space:nowrap}
+/* ========== Highlight (search) ========== */
+mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border-radius:3px}
 
-@media (max-width:880px){.search{min-width:180px}.brand h1{font-size:18px}}
-@media (max-width:640px){.actions{flex-direction:column;align-items:stretch}.search{width:100%}}
-
-/* Стили для кликабельных хэшей */
-.hash-clickable {
-    color: var(--accent);
-    cursor: pointer;
-    text-decoration: underline;
-    text-decoration-style: dotted;
-    transition: color 0.2s ease;
-    font-family: 'Courier New', monospace;
-    font-weight: 500;
+/* ========== Responsive ========== */
+@media (max-width:1100px){
+    .search{min-width:240px}
 }
-
-.hash-clickable:hover {
-    color: #9ae2ff;
-    text-decoration-style: solid;
+@media (max-width:880px){
+    .container{margin:16px auto;padding:0 14px 20px}
+    .search{min-width:200px}
+    h1{font-size:20px}
+    .row{padding:12px 14px;gap:12px}
+    .thumb{width:40px;height:40px}
+    .filename{font-size:14px}
+    .children{margin-left:0}
 }
-
-.hash-not-ready {
-    color: var(--muted);
-    font-style: italic;
-    cursor: default;
+@media (max-width:640px){
+    header{flex-direction:column;align-items:stretch}
+    .brand{justify-content:flex-start}
+    .actions{width:100%}
+    .search{flex:1;width:100%}
+    .row{grid-template-columns:auto 1fr;grid-template-areas:"thumb meta" "btns btns"}
+    .thumb{grid-area:thumb}
+    .meta{grid-area:meta}
+    .btns{grid-area:btns;justify-content:flex-end;flex-wrap:wrap}
+    .dd-menu{right:0}
 }
-
-/* Блок отсутствующих */
-.missing-block{margin-top:18px;padding:12px 14px;border-radius:10px;background:rgba(248,113,113,0.06);border:1px dashed rgba(248,113,113,0.25)}
-.missing-block h2{margin:0 0 10px 0;font-size:15px;color:var(--err);display:flex;align-items:center;gap:8px}
-.missing-block .row{background:rgba(255,255,255,0.015)}
-.missing-block .row:hover{transform:none}
-.missing-block.collapsed .missing-list{display:none}
-.missing-toggle{cursor:pointer;user-select:none}
 </style>
 </head>
 <body>
 <svg style="display:none" aria-hidden="true">
-  <symbol id="ic-folder" viewBox="0 0 24 24">
-    <path d="M10 4H4a2 2 0 0 0-2 2v2h20V6a2 2 0 0 0-2-2h-8l-2-2zM2 10v8a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-8H2z"/>
-  </symbol>
-  <symbol id="ic-file" viewBox="0 0 24 24">
-    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zM14 3.5L20.5 10H14V3.5z"/>
-  </symbol>
-  <symbol id="ic-iso" viewBox="0 0 24 24">
-  <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/>
-  <circle cx="12" cy="12" r="3" fill="currentColor"/>
-  </symbol>
-  <symbol id="ic-download" viewBox="0 0 24 24"><path d="M5 20h14v-2H5v2zm7-18L5.33 9h3.67v4h4V9h3.67L12 2z"/></symbol>
-  <symbol id="ic-copy" viewBox="0 0 24 24"><path d="M16 1H4a2 2 0 0 0-2 2v12h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></symbol>
-  <symbol id="ic-link" viewBox="0 0 24 24"><path d="M3.9 12a5 5 0 0 0 0 7.07l1.42 1.42a5 5 0 0 0 7.07 0l3.54-3.54-1.41-1.41L11 19.07a3 3 0 0 1-4.24 0L5.33 17A3 3 0 0 1 5.33 13L3.9 12zM20.1 12a5 5 0 0 0 0-7.07L18.68 3.51a5 5 0 0 0-7.07 0L8.07 6.05 9.48 7.46 13 3.93a3 3 0 0 1 4.24 0l1.42 1.42a3 3 0 0 1 0 4.24l-1.42 1.42L20.1 12z"/></symbol>
-  <symbol id="ic-warn" viewBox="0 0 24 24"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></symbol>
+  <symbol id="ic-folder" viewBox="0 0 24 24"><path d="M10 4H4a2 2 0 0 0-2 2v2h20V6a2 2 0 0 0-2-2h-8l-2-2zM2 10v8a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-8H2z"/></symbol>
+  <symbol id="ic-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zM14 3.5L20.5 10H14V3.5z"/></symbol>
+  <symbol id="ic-iso" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="currentColor"/></symbol>
+  <symbol id="ic-download" viewBox="0 0 24 24" fill="currentColor"><path d="M5 20h14v-2H5v2zm7-18L5.33 9h3.67v4h4V9h3.67L12 2z"/></symbol>
+  <symbol id="ic-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+  <symbol id="ic-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+  <symbol id="ic-warn" viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></symbol>
+  <symbol id="ic-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+  <symbol id="ic-hdd" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="12" x2="2" y2="12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+  <symbol id="ic-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></symbol>
+  <symbol id="ic-term" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></symbol>
 </svg>
 
     <div class="container">
         <header>
             <div class="brand">
                 <img src="favicon.ico" alt="Logo" class="logo-img">
-                <h1>iso-файлы</h1>
+                <h1>iso-файлы<span class="tag">mirror</span></h1>
             </div>
             <div class="actions">
                 <input id="search" class="search" placeholder="Поиск по имени..." aria-label="Поиск по имени" />
@@ -259,12 +577,12 @@ h1{margin:0;font-size:22px;background:linear-gradient(90deg,var(--accent),#9ae2f
             <div id="list" class="list" role="list"></div>
 
             <div id="missing-block" class="missing-block" style="display:none">
-                <h2 class="missing-toggle">
+                <h2>
                     <svg class="icon" style="width:18px;height:18px" aria-hidden="true"><use href="#ic-warn"></use></svg>
                     <span id="missing-title">Отсутствующие файлы</span>
-                    <span style="margin-left:auto;font-size:12px;color:var(--muted)">— ожидаются по конфигу, но не найдены на диске</span>
+                    <span class="hint">— ожидаются по конфигу, но не найдены на диске</span>
                 </h2>
-                <div id="missing-list" class="list missing-list"></div>
+                <div id="missing-list" class="list"></div>
             </div>
         </div>
     </div>
@@ -274,43 +592,58 @@ h1{margin:0;font-size:22px;background:linear-gradient(90deg,var(--accent),#9ae2f
         const FILES = <?php echo json_encode($items, JSON_UNESCAPED_UNICODE); ?> || [];
         const MISSING = <?php echo json_encode($missing, JSON_UNESCAPED_UNICODE); ?> || [];
         const LAST_RUN = <?php echo json_encode($lastRun, JSON_UNESCAPED_UNICODE); ?>;
+        const TOTAL_FILES = <?php echo (int)$totalFiles; ?>;
+        const TOTAL_SIZE = <?php echo (int)$totalSize; ?>;
         const webDir = '<?php echo addslashes($webDir); ?>';
 
-        function escapeHtml(unsafe){return String(unsafe).replace(/[&<>\"']/g, function(m){return{'&':'&amp;','<':'&lt;','>':'&gt;','\\"':'&quot;','"':'&quot;',"'":"&#39;"}[m]||m;});}
-        function humanSize(bytes){if(bytes===0)return'0 B';const thresh=1024;const units=['B','KB','MB','GB','TB'];let u=0;let n=bytes;while(n>=thresh&&u<units.length-1){n/=thresh;u++;}return Math.round(n*10)/10+' '+units[u];}
-        function fmtDate(ts){const d=new Date(ts*1000);return d.toLocaleString();}
-        function fmtIso(iso){if(!iso)return'—';try{return new Date(iso).toLocaleString();}catch(e){return iso;}}
+        function escapeHtml(unsafe){return String(unsafe).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]||m));}
+        function humanSize(bytes){if(bytes===0)return'0 B';const u=['B','KB','MB','GB','TB'];let i=0,n=bytes;while(n>=1024&&i<u.length-1){n/=1024;i++;}return (n<10?n.toFixed(1):Math.round(n))+' '+u[i];}
+        function fmtDate(ts){const d=new Date(ts*1000);return d.toLocaleString('ru-RU',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});}
+        function fmtIso(iso){if(!iso)return'—';try{return new Date(iso).toLocaleString('ru-RU');}catch(e){return iso;}}
         function relativeTime(iso){
             if(!iso) return '';
             try{
-                const then = new Date(iso).getTime();
-                const diff = Math.floor((Date.now() - then) / 1000);
+                const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
                 if(diff < 60) return 'только что';
                 if(diff < 3600) return Math.floor(diff/60) + ' мин назад';
                 if(diff < 86400) return Math.floor(diff/3600) + ' ч назад';
-                return Math.floor(diff/86400) + ' дн назад';
+                if(diff < 604800) return Math.floor(diff/86400) + ' дн назад';
+                return Math.floor(diff/604800) + ' нед назад';
             } catch(e) { return ''; }
         }
+        function svgIcon(id, cls=''){return `<svg class="ico ${cls}" aria-hidden="true"><use href="#${id}"></use></svg>`;}
 
         function renderStatusBar(){
             const el = document.getElementById('status-bar');
-            if(!LAST_RUN){
-                el.innerHTML = '<span class="pill muted">Последняя проверка: данных нет</span><span class="sep">·</span><span>Запустите <code>php update_iso.php</code></span>';
-                return;
-            }
-            const ts = LAST_RUN.finished_at || LAST_RUN.started_at;
-            const rel = relativeTime(ts);
             const parts = [];
-            parts.push(`<span class="pill muted">Последняя проверка: ${fmtIso(ts)}${rel ? ' (' + rel + ')' : ''}</span>`);
-            if(typeof LAST_RUN.total === 'number'){
-                parts.push('<span class="sep">·</span>');
-                parts.push(`<span class="pill ok">обновлено ${LAST_RUN.updated || 0}</span>`);
-                parts.push(`<span class="pill muted">актуально ${LAST_RUN.up_to_date || 0}</span>`);
-                if(LAST_RUN.skipped) parts.push(`<span class="pill muted">пропущено ${LAST_RUN.skipped}</span>`);
-                if(LAST_RUN.failed) parts.push(`<span class="pill err">ошибки ${LAST_RUN.failed}</span>`);
-                if(typeof LAST_RUN.duration_s === 'number') parts.push(`<span class="pill muted">${LAST_RUN.duration_s} сек</span>`);
+
+            // Сводка по хранилищу — всегда показываем
+            parts.push(`<span class="pill accent">${svgIcon('ic-hdd')}<span class="num">${humanSize(TOTAL_SIZE)}</span></span>`);
+            parts.push(`<span class="pill muted">${TOTAL_FILES} файл(ов)</span>`);
+
+            if(MISSING.length > 0){
+                parts.push(`<span class="pill warn">${svgIcon('ic-warn')}отсутствует ${MISSING.length}</span>`);
             }
-            if(LAST_RUN.fatal){
+
+            parts.push('<span class="sep">•</span>');
+
+            if(!LAST_RUN){
+                parts.push('<span class="status-time">Проверки не было — запустите <code style="background:rgba(255,255,255,0.05);padding:1px 6px;border-radius:4px;font-family:var(--mono);font-size:11px">php update_iso.php</code></span>');
+            } else {
+                const ts = LAST_RUN.finished_at || LAST_RUN.started_at;
+                const rel = relativeTime(ts);
+                parts.push(`<span class="status-time">${svgIcon('ic-clock')} Проверка: <strong>${fmtIso(ts)}</strong>${rel?' <span style="opacity:.6">('+rel+')</span>':''}</span>`);
+
+                if(typeof LAST_RUN.total === 'number'){
+                    parts.push('<span class="sep">•</span>');
+                    if(LAST_RUN.updated > 0) parts.push(`<span class="pill ok">${svgIcon('ic-check')}обновлено ${LAST_RUN.updated}</span>`);
+                    if(LAST_RUN.up_to_date > 0) parts.push(`<span class="pill muted">актуально ${LAST_RUN.up_to_date}</span>`);
+                    if(LAST_RUN.skipped > 0) parts.push(`<span class="pill muted">пропущено ${LAST_RUN.skipped}</span>`);
+                    if(LAST_RUN.failed > 0) parts.push(`<span class="pill err">ошибки ${LAST_RUN.failed}</span>`);
+                    if(typeof LAST_RUN.duration_s === 'number') parts.push(`<span class="pill muted">${LAST_RUN.duration_s} сек</span>`);
+                }
+            }
+            if(LAST_RUN && LAST_RUN.fatal){
                 parts.push(`<span class="pill err">FATAL: ${escapeHtml(LAST_RUN.fatal)}</span>`);
             }
             el.innerHTML = parts.join(' ');
@@ -333,8 +666,12 @@ h1{margin:0;font-size:22px;background:linear-gradient(90deg,var(--accent),#9ae2f
                 const meta = document.createElement('div'); meta.className = 'meta';
                 const name = document.createElement('div'); name.className = 'filename'; name.textContent = m.name;
                 const sub = document.createElement('div'); sub.className = 'sub';
-                sub.textContent = (m.subdir ? `files/${m.subdir}/  ←  ` : 'files/  ←  ') + m.remote;
-                sub.title = m.remote;
+                const where = document.createElement('span'); where.className='field';
+                where.innerHTML = `<span style="opacity:.7">${m.subdir ? 'files/'+escapeHtml(m.subdir)+'/' : 'files/'}</span>`;
+                const arrow = document.createElement('span'); arrow.className='dot'; arrow.textContent='←';
+                const remote = document.createElement('span'); remote.className='field'; remote.textContent = m.remote; remote.style.color='var(--muted)';
+                remote.title = m.remote;
+                sub.appendChild(where); sub.appendChild(arrow); sub.appendChild(remote);
                 meta.appendChild(name); meta.appendChild(sub);
                 row.appendChild(thumb); row.appendChild(meta);
                 list.appendChild(row);
@@ -357,61 +694,125 @@ h1{margin:0;font-size:22px;background:linear-gradient(90deg,var(--accent),#9ae2f
             if(end < raw.length) snippet = snippet + '…';
             const esc = escapeHtml(snippet);
             const regex = new RegExp('('+q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')', 'ig');
-            const highlighted = esc.replace(regex, '<mark>$1</mark>');
-            return {html: highlighted, count};
+            return {html: esc.replace(regex, '<mark>$1</mark>'), count};
         }
 
         function fileIcon(name, isDir){
             if(isDir) return '<svg class="icon" aria-hidden="true"><use href="#ic-folder"></use></svg>';
             const ext = (name.split('.').pop()||'').toLowerCase();
-            if(/(jpe?g|png|gif|webp|svg)/.test(ext)) return '<svg class="icon" aria-hidden="true"><use href="#ic-file"></use></svg>';
-            if(/(pdf)/.test(ext)) return '<svg class="icon" aria-hidden="true"><use href="#ic-file"></use></svg>';
             if(/(iso)/.test(ext)) return '<svg class="icon" aria-hidden="true"><use href="#ic-iso"></use></svg>';
             return '<svg class="icon" aria-hidden="true"><use href="#ic-file"></use></svg>';
         }
 
-        function copyToClipboard(text){if(navigator.clipboard){navigator.clipboard.writeText(text).then(()=>showToast('Скопировано в буфер'))}else{const t=document.createElement('textarea');t.value=text;document.body.appendChild(t);t.select();try{document.execCommand('copy');showToast('Скопировано в буфер');}catch(e){showToast('Не удалось скопировать');}document.body.removeChild(t);}}
+        function copyToClipboard(text){
+            if(navigator.clipboard){
+                navigator.clipboard.writeText(text).then(()=>showToast('Скопировано в буфер'));
+            } else {
+                const t=document.createElement('textarea');t.value=text;document.body.appendChild(t);t.select();
+                try{document.execCommand('copy');showToast('Скопировано в буфер');}catch(e){showToast('Не удалось скопировать');}
+                document.body.removeChild(t);
+            }
+        }
 
         function createClickableHash(hashValue) {
             if (!hashValue || hashValue === 'sha256:not_computed_yet') {
                 const span = document.createElement('span');
                 span.className = 'hash-not-ready';
-                span.textContent = 'sha256:вычисляется...';
+                span.textContent = 'sha256: вычисляется...';
                 return span;
             }
-
             const span = document.createElement('span');
             span.className = 'hash-clickable';
-            span.textContent = hashValue;
             span.title = 'Кликните, чтобы скопировать хэш';
+            span.innerHTML = '<svg class="ico" aria-hidden="true"><use href="#ic-copy"></use></svg>';
+            const txt = document.createElement('span');
+            txt.textContent = hashValue;
+            span.appendChild(txt);
 
             span.addEventListener('click', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-
-                const hashOnly = hashValue.replace('sha256:', '');
-                copyToClipboard(hashOnly);
-
-                const originalColor = span.style.color;
-                span.style.color = '#4ade80';
-                setTimeout(() => {
-                    span.style.color = originalColor;
-                }, 200);
+                copyToClipboard(hashValue.replace('sha256:', ''));
+                span.classList.add('copied');
+                setTimeout(()=>span.classList.remove('copied'),350);
             });
-
             return span;
         }
 
-        const listEl=document.getElementById('list'),countEl=document.getElementById('count'),searchInput=document.getElementById('search'),sortSelect=document.getElementById('sort'),toast=document.getElementById('toast');
+        function buildSubLine(f){
+            const sub = document.createElement('div'); sub.className='sub';
+
+            const sizeF = document.createElement('span'); sizeF.className='field';
+            sizeF.innerHTML = svgIcon('ic-hdd') + humanSize(f.size);
+            sub.appendChild(sizeF);
+
+            const dot1 = document.createElement('span'); dot1.className='dot'; dot1.textContent='•'; sub.appendChild(dot1);
+
+            const dateF = document.createElement('span'); dateF.className='field';
+            dateF.innerHTML = svgIcon('ic-clock') + fmtDate(f.mtime);
+            sub.appendChild(dateF);
+
+            const dot2 = document.createElement('span'); dot2.className='dot'; dot2.textContent='•'; sub.appendChild(dot2);
+
+            sub.appendChild(createClickableHash(f.type));
+            return sub;
+        }
+
+        function buildCopyMenu(fileUrl, fileName){
+            const group=document.createElement('div');group.className='copy-group';
+            const btn=document.createElement('button');btn.className='ghost copy-toggle';
+            btn.innerHTML = svgIcon('ic-copy') + ' Копировать <span style="opacity:.6">▾</span>';
+            btn.setAttribute('aria-haspopup','true');
+            btn.setAttribute('aria-expanded','false');
+
+            const menu=document.createElement('div');menu.className='dd-menu';
+            const a1=document.createElement('a');a1.href='#';a1.className='dd-item';
+            a1.innerHTML = svgIcon('ic-link') + 'Прямую ссылку';
+            const a2=document.createElement('a');a2.href='#';a2.className='dd-item';
+            a2.innerHTML = svgIcon('ic-term') + 'Команду <code style="font-family:var(--mono);font-size:11px;color:var(--accent)">wget</code>';
+            menu.appendChild(a1);menu.appendChild(a2);
+
+            btn.addEventListener('click',e=>{
+                e.stopPropagation();
+                const willOpen = !menu.classList.contains('show');
+                setMenuOpen(menu, willOpen);
+                btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+                if(willOpen) positionMenu(menu, btn);
+            });
+            a1.addEventListener('click',e=>{e.preventDefault();copyToClipboard(fileUrl); setMenuOpen(menu,false);});
+            a2.addEventListener('click',e=>{e.preventDefault();const wget='wget -O "' + fileName.replace(/"/g, '\\"') + '" "' + fileUrl + '"';copyToClipboard(wget); setMenuOpen(menu,false);});
+
+            group.appendChild(btn);group.appendChild(menu);
+            return group;
+        }
+
+        function positionMenu(menu, btn){
+            // Если в нижней четверти viewport — открываем вверх
+            menu.classList.remove('flip-up');
+            const r = btn.getBoundingClientRect();
+            if (window.innerHeight - r.bottom < 240) {
+                menu.classList.add('flip-up');
+            }
+        }
+
+        const listEl=document.getElementById('list'),
+              countEl=document.getElementById('count'),
+              searchInput=document.getElementById('search'),
+              sortSelect=document.getElementById('sort'),
+              toast=document.getElementById('toast');
         let lastQuery = '';
 
-        function showToast(t){toast.textContent=t;toast.classList.add('show');clearTimeout(showToast._t);showToast._t=setTimeout(()=>toast.classList.remove('show'),1600);}
+        function showToast(t){
+            toast.innerHTML = svgIcon('ic-check') + escapeHtml(t);
+            toast.classList.add('show');
+            clearTimeout(showToast._t);
+            showToast._t=setTimeout(()=>toast.classList.remove('show'),1600);
+        }
 
         function animateOpen(el){
             el.style.display = 'grid';
             requestAnimationFrame(()=>{
-                const h = el.scrollHeight;
-                el.style.maxHeight = h + 'px';
+                el.style.maxHeight = el.scrollHeight + 'px';
                 el.classList.add('open');
             });
         }
@@ -459,7 +860,8 @@ h1{margin:0;font-size:22px;background:linear-gradient(90deg,var(--accent),#9ae2f
             const dirs = items.filter(i=>i.type==='dir');
             const files = items.filter(i=>i.type!=='dir');
             const total = files.length + dirs.length;
-            if(total===0){countEl.textContent='Файлов не найдено.';return;}countEl.textContent=`Найдено ${total} элемент(ов)`;
+            if(total===0){countEl.innerHTML='<span>Файлов не найдено</span>';return;}
+            countEl.innerHTML = `Найдено <span class="num">${total}</span> элемент(ов)` + (lastQuery ? ` по запросу <span class="num">«${escapeHtml(lastQuery)}»</span>` : '');
 
             dirs.forEach(dir=>{
                 const row=document.createElement('div');row.className='row dir-row';row.setAttribute('role','listitem');row.tabIndex=0;
@@ -470,62 +872,61 @@ h1{margin:0;font-size:22px;background:linear-gradient(90deg,var(--accent),#9ae2f
                 const dirNameHighlight = highlightSnippet(dir.name,lastQuery);
                 name.innerHTML = dirNameHighlight.html;
                 if((dir._dirMatch) || (Array.isArray(dir.children) && dir.children.length>0 && lastQuery)){
-                    const matchCount = (dir._dirMatch?1:0) + (Array.isArray(dir.children)?dir.children.reduce((s,c)=>{
-                        return s + ((c.name.toLowerCase().includes(lastQuery) && lastQuery)?1:0);
-                    },0):0);
+                    const matchCount = (dir._dirMatch?1:0) + (Array.isArray(dir.children)?dir.children.reduce((s,c)=>s + ((c.name.toLowerCase().includes(lastQuery) && lastQuery)?1:0), 0):0);
                     if(matchCount>0){
                         const mb = document.createElement('span'); mb.className='match-badge'; mb.textContent = matchCount + ' совп.';
                         name.appendChild(mb);
                     }
                 }
 
-                const sub=document.createElement('div');sub.className='sub';sub.textContent=`Папка • ${Array.isArray(dir.children)?dir.children.length:0} файл(ов)`;
+                const sub=document.createElement('div');sub.className='sub';
+                const cf = document.createElement('span'); cf.className='field';
+                cf.innerHTML = svgIcon('ic-folder') + (Array.isArray(dir.children)?dir.children.length:0) + ' файл(ов)';
+                sub.appendChild(cf);
+                if(dir.size > 0){
+                    const dot = document.createElement('span'); dot.className='dot'; dot.textContent='•'; sub.appendChild(dot);
+                    const sf = document.createElement('span'); sf.className='field';
+                    sf.innerHTML = svgIcon('ic-hdd') + humanSize(dir.size);
+                    sub.appendChild(sf);
+                }
                 meta.appendChild(name);meta.appendChild(sub);
 
                 const btns=document.createElement('div');btns.className='btns';
-                const toggle=document.createElement('button');toggle.className='ghost';toggle.innerHTML = '<span class="toggle-arrow">▾</span>';toggle.setAttribute('aria-expanded','false');toggle.title='Открыть папку';toggle.setAttribute('aria-label','Открыть папку');
+                const toggle=document.createElement('button');toggle.className='ghost';
+                toggle.innerHTML = '<span class="toggle-arrow">▾</span>';
+                toggle.setAttribute('aria-expanded','false');toggle.title='Открыть папку';toggle.setAttribute('aria-label','Открыть папку');
                 btns.appendChild(toggle);
                 row.appendChild(thumb);row.appendChild(meta);row.appendChild(btns);
                 listEl.appendChild(row);
 
                 const childrenWrap=document.createElement('div');childrenWrap.className='children';childrenWrap.style.display='none';childrenWrap.style.maxHeight='0px';
                 (dir.children||[]).forEach(f=>{
-                    const crow=document.createElement('div');crow.className='row indent';crow.tabIndex=0;
+                    const crow=document.createElement('div');crow.className='row';crow.tabIndex=0;
                     const cthumb=document.createElement('div');cthumb.className='thumb';cthumb.innerHTML=fileIcon(f.name,false);
                     const cmeta=document.createElement('div');cmeta.className='meta';
                     const cname=document.createElement('div');cname.className='filename';
                     const highlighted = highlightSnippet(f.name,lastQuery);
                     cname.innerHTML = highlighted.html;
                     if(highlighted.count>0){const mb=document.createElement('span');mb.className='match-badge';mb.textContent=highlighted.count + ' совп.';cname.appendChild(mb);}
-                    const csub=document.createElement('div');csub.className='sub';
-                    csub.appendChild(document.createTextNode(`${humanSize(f.size)} • ${fmtDate(f.mtime)} • `));
-                    csub.appendChild(createClickableHash(f.type));
-                    cmeta.appendChild(cname);cmeta.appendChild(csub);
+                    cmeta.appendChild(cname);
+                    cmeta.appendChild(buildSubLine(f));
 
                     const cbtns=document.createElement('div');cbtns.className='btns';
-                    const cdl=document.createElement('a');cdl.className='primary tooltip';cdl.textContent='Скачать';cdl.href=webDir+'/'+encodeURIComponent(dir.name)+'/'+encodeURIComponent(f.name);cdl.setAttribute('download','');cdl.target='_blank';cdl.setAttribute('data-title','Скачать файл');
-
-                    const copyGroup=document.createElement('div');copyGroup.className='copy-group';
-                    const ccopy=document.createElement('button');ccopy.className='ghost copy-toggle';ccopy.textContent='Копировать ▾';ccopy.setAttribute('aria-haspopup','true');ccopy.setAttribute('aria-expanded','false');
-                    const cmenu=document.createElement('div');cmenu.className='dd-menu';
-                    const citem1=document.createElement('a');citem1.href='#';citem1.className='dd-item';citem1.textContent='Скопировать прямую ссылку';
-                    const citem2=document.createElement('a');citem2.href='#';citem2.className='dd-item';citem2.textContent='Скопировать команду для Linux (wget)';
-                    cmenu.appendChild(citem1);cmenu.appendChild(citem2);
+                    const cdl=document.createElement('a');cdl.className='primary tooltip';
+                    cdl.innerHTML = svgIcon('ic-download') + 'Скачать';
+                    cdl.href=webDir+'/'+encodeURIComponent(dir.name)+'/'+encodeURIComponent(f.name);
+                    cdl.setAttribute('download','');cdl.target='_blank';cdl.setAttribute('data-title','Скачать файл');
 
                     const childUrl=window.location.origin+'/'+webDir+'/'+encodeURIComponent(dir.name)+'/'+encodeURIComponent(f.name);
-                    ccopy.addEventListener('click',e=>{e.stopPropagation(); setMenuOpen(cmenu, !cmenu.classList.contains('show')); ccopy.setAttribute('aria-expanded', cmenu.classList.contains('show') ? 'true' : 'false');});
-                    citem1.addEventListener('click',e=>{e.preventDefault();copyToClipboard(childUrl); setMenuOpen(cmenu,false);});
-                    citem2.addEventListener('click',e=>{e.preventDefault();var wget = 'wget -O "' + f.name.replace(/"/g, '\\"') + '" "' + childUrl + '"';copyToClipboard(wget); setMenuOpen(cmenu,false);});
-
-                    copyGroup.appendChild(ccopy);
-                    copyGroup.appendChild(cmenu);
-
                     cbtns.appendChild(cdl);
-                    cbtns.appendChild(copyGroup);
+                    cbtns.appendChild(buildCopyMenu(childUrl, f.name));
                     crow.appendChild(cthumb);crow.appendChild(cmeta);crow.appendChild(cbtns);
                     childrenWrap.appendChild(crow);
 
-                    crow.addEventListener('keydown', e=>{ if(e.key==='Enter'){ const a = crow.querySelector('a.primary'); if(a) a.click(); } if(e.key===' '){ e.preventDefault(); const cb = crow.querySelector('.copy-toggle'); if(cb) cb.click(); } });
+                    crow.addEventListener('keydown', e=>{
+                        if(e.key==='Enter'){const a = crow.querySelector('a.primary'); if(a) a.click();}
+                        if(e.key===' '){e.preventDefault(); const cb = crow.querySelector('.copy-toggle'); if(cb) cb.click();}
+                    });
                 });
 
                 listEl.appendChild(childrenWrap);
@@ -540,21 +941,23 @@ h1{margin:0;font-size:22px;background:linear-gradient(90deg,var(--accent),#9ae2f
                 row.addEventListener('click', function(e){
                     if (e.target.closest('.btns')) return;
                     const isOpen = childrenWrap.classList.contains('open');
+                    const arrow = toggle.querySelector('.toggle-arrow');
                     if(isOpen){
-                        const arrow = toggle.querySelector('.toggle-arrow'); if(arrow) arrow.classList.remove('expanded');
+                        if(arrow) arrow.classList.remove('expanded');
                         animateClose(childrenWrap);
                         childrenWrap.classList.remove('open');
                         toggle.setAttribute('aria-expanded','false');
                     } else {
-                        const arrow = toggle.querySelector('.toggle-arrow'); if(arrow) arrow.classList.add('expanded');
+                        if(arrow) arrow.classList.add('expanded');
                         animateOpen(childrenWrap);
                         childrenWrap.classList.add('open');
                         toggle.setAttribute('aria-expanded','true');
                     }
                 });
 
-                row.addEventListener('keydown', e=>{ if(e.key==='Enter'){ row.click(); } if(e.key===' '){ e.preventDefault(); const cb = row.querySelector('.copy-toggle'); if(cb) cb.click(); } });
-
+                row.addEventListener('keydown', e=>{
+                    if(e.key==='Enter'){row.click();}
+                });
             });
 
             files.forEach(f=>{
@@ -565,36 +968,33 @@ h1{margin:0;font-size:22px;background:linear-gradient(90deg,var(--accent),#9ae2f
                 const highlighted = highlightSnippet(f.name,lastQuery);
                 name.innerHTML = highlighted.html;
                 if(highlighted.count>0){const mb=document.createElement('span');mb.className='match-badge';mb.textContent=highlighted.count + ' совп.';name.appendChild(mb);}
-                const sub=document.createElement('div');sub.className='sub';
-                sub.appendChild(document.createTextNode(`${humanSize(f.size)} • ${fmtDate(f.mtime)} • `));
-                sub.appendChild(createClickableHash(f.type));
-                meta.appendChild(name);meta.appendChild(sub);
+                meta.appendChild(name);
+                meta.appendChild(buildSubLine(f));
 
                 const btns=document.createElement('div');btns.className='btns';
-                const dl=document.createElement('a');dl.className='primary tooltip';dl.textContent='Скачать';dl.href=webDir+'/'+encodeURIComponent(f.name);dl.setAttribute('download','');dl.target='_blank';dl.setAttribute('data-title','Скачать файл');
-
-                const group=document.createElement('div');group.className='copy-group';
-                const copyBtn=document.createElement('button');copyBtn.className='ghost copy-toggle';copyBtn.textContent='Копировать ▾';copyBtn.setAttribute('aria-haspopup','true');copyBtn.setAttribute('aria-expanded','false');
-                const menu=document.createElement('div');menu.className='dd-menu';
-                const item1=document.createElement('a');item1.href='#';item1.className='dd-item';item1.textContent='Скопировать прямую ссылку';
-                const item2=document.createElement('a');item2.href='#';item2.className='dd-item';item2.textContent='Скопировать команду для Linux (wget)';
-                menu.appendChild(item1);menu.appendChild(item2);
+                const dl=document.createElement('a');dl.className='primary tooltip';
+                dl.innerHTML = svgIcon('ic-download') + 'Скачать';
+                dl.href=webDir+'/'+encodeURIComponent(f.name);
+                dl.setAttribute('download','');dl.target='_blank';dl.setAttribute('data-title','Скачать файл');
 
                 const fileUrl=window.location.origin+'/'+webDir+'/'+encodeURIComponent(f.name);
-                copyBtn.addEventListener('click',e=>{e.stopPropagation(); setMenuOpen(menu, !menu.classList.contains('show')); copyBtn.setAttribute('aria-expanded', menu.classList.contains('show') ? 'true' : 'false');});
-                item1.addEventListener('click',e=>{e.preventDefault();copyToClipboard(fileUrl); setMenuOpen(menu,false);});
-                item2.addEventListener('click',e=>{e.preventDefault();var wget = 'wget -O "' + f.name.replace(/"/g, '\\"') + '" "' + fileUrl + '"';copyToClipboard(wget); setMenuOpen(menu,false);});
+                btns.appendChild(dl);
+                btns.appendChild(buildCopyMenu(fileUrl, f.name));
+                row.appendChild(thumb);row.appendChild(meta);row.appendChild(btns);
+                listEl.appendChild(row);
 
-                group.appendChild(copyBtn);
-                group.appendChild(menu);
-
-                btns.appendChild(dl);btns.appendChild(group);row.appendChild(thumb);row.appendChild(meta);row.appendChild(btns);listEl.appendChild(row);
-
-                row.addEventListener('keydown', e=>{ if(e.key==='Enter'){ const a = row.querySelector('a.primary'); if(a) a.click(); } if(e.key===' '){ e.preventDefault(); const cb = row.querySelector('.copy-toggle'); if(cb) cb.click(); } });
+                row.addEventListener('keydown', e=>{
+                    if(e.key==='Enter'){const a = row.querySelector('a.primary'); if(a) a.click();}
+                    if(e.key===' '){e.preventDefault(); const cb = row.querySelector('.copy-toggle'); if(cb) cb.click();}
+                });
             });
         }
 
-        document.addEventListener('click',function(e){ if(!e.target.closest('.copy-group') && !e.target.classList.contains('ghost')){ document.querySelectorAll('.dd-menu.show').forEach(m=>setMenuOpen(m,false));}});
+        document.addEventListener('click',function(e){
+            if(!e.target.closest('.copy-group')){
+                document.querySelectorAll('.dd-menu.show').forEach(m=>setMenuOpen(m,false));
+            }
+        });
 
         function apply(){
             const q=(searchInput.value||'').trim().toLowerCase();
@@ -605,7 +1005,10 @@ h1{margin:0;font-size:22px;background:linear-gradient(90deg,var(--accent),#9ae2f
                     if(it.type==='dir'){
                         const dirMatch = it.name.toLowerCase().includes(q);
                         const filteredChildren = (it.children||[]).filter(c=>c.name.toLowerCase().includes(q));
-                        return Object.assign({}, it, { children: filteredChildren, _dirMatch: dirMatch });
+                        if(dirMatch || filteredChildren.length>0){
+                            return Object.assign({}, it, { children: dirMatch ? (it.children||[]) : filteredChildren, _dirMatch: dirMatch });
+                        }
+                        return null;
                     }
                     return it.name.toLowerCase().includes(q)?it:null;
                 }).filter(Boolean);
@@ -632,7 +1035,10 @@ h1{margin:0;font-size:22px;background:linear-gradient(90deg,var(--accent),#9ae2f
                     return (s==='name_desc' ? b.name.localeCompare(a.name) : a.name.localeCompare(b.name));
                 }
                 if(s==='mtime_desc' || s==='mtime_asc' || s==='size_desc' || s==='size_asc'){
-                    if(a.type==='dir' && b.type==='dir') return a.name.localeCompare(b.name);
+                    if(a.type==='dir' && b.type==='dir'){
+                        if(s.startsWith('size')) return s==='size_desc' ? (b.size||0)-(a.size||0) : (a.size||0)-(b.size||0);
+                        return a.name.localeCompare(b.name);
+                    }
                     if(a.type!=='dir' && b.type!=='dir'){
                         switch(s){
                             case 'mtime_desc': return b.mtime - a.mtime;
@@ -659,7 +1065,13 @@ h1{margin:0;font-size:22px;background:linear-gradient(90deg,var(--accent),#9ae2f
         });
         sortSelect.addEventListener('change',apply);
 
-        document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ document.querySelectorAll('.dd-menu.show').forEach(m=>setMenuOpen(m,false)); } });
+        document.addEventListener('keydown', e=>{
+            if(e.key==='Escape'){
+                document.querySelectorAll('.dd-menu.show').forEach(m=>setMenuOpen(m,false));
+                if(searchInput.value){searchInput.value=''; apply();}
+            }
+            if((e.ctrlKey||e.metaKey) && e.key==='k'){e.preventDefault(); searchInput.focus(); searchInput.select();}
+        });
     </script>
 </body>
 </html>
