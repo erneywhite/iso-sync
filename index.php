@@ -1,6 +1,12 @@
 <?php
 declare(strict_types=1);
 
+// Запрещаем браузеру и прокси кешировать саму страницу — иначе после правок
+// пользователь может видеть устаревший HTML/CSS до Ctrl+F5.
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: 0');
+
 require_once __DIR__ . '/lib/bootstrap.php';
 
 use IsoSync\Config;
@@ -613,7 +619,9 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
                 return Math.floor(diff/604800) + ' нед назад';
             } catch(e) { return ''; }
         }
-        function svgIcon(id, cls=''){return `<svg class="ico ${cls}" aria-hidden="true"><use href="#${id}"></use></svg>`;}
+        // width/height в атрибутах — защита от случая, когда CSS .ico ещё не подгружен
+        // (без них браузер по спецификации SVG рисует svg в 300×150 px).
+        function svgIcon(id, cls=''){return `<svg class="ico ${cls}" width="14" height="14" aria-hidden="true"><use href="#${id}"></use></svg>`;}
 
         function renderStatusBar(){
             const el = document.getElementById('status-bar');
