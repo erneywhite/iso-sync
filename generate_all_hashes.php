@@ -1,123 +1,121 @@
-#!/usr/bin/env php
 <?php
+declare(strict_types=1);
+
 /**
- * Скрипт для предварительного вычисления хэшей файлов с очисткой устаревших кэшей
- * Запуск: php compute_all_hashes.php
+ * Предварительное вычисление SHA256 для всех файлов в files/
+ * + удаление устаревших записей кэша.
+ *
+ * Запуск:    php generate_all_hashes.php
+ * Кэш:       .hash_cache/
+ * Логи:      logs/hashes.log
+ *
+ * Идемпотентен: если хэш уже посчитан и mtime+size не изменились — пересчёт пропускается.
  */
 
-$dir = __DIR__ . DIRECTORY_SEPARATOR . 'files';
-$cacheDir = __DIR__ . DIRECTORY_SEPARATOR . '.hash_cache';
+require_once __DIR__ . '/lib/bootstrap.php';
 
-// Создаем директорию для кэша
-if (!is_dir($cacheDir)) {
-    mkdir($cacheDir, 0755, true);
+use IsoSync\HashCache;
+use IsoSync\Lock;
+use IsoSync\Logger;
+
+$baseDir  = __DIR__;
+$filesDir = $baseDir . '/files';
+$cacheDir = $baseDir . '/.hash_cache';
+$logDir   = $baseDir . '/logs';
+$lockPath = $baseDir . '/.hashes.lock';
+
+$logger = new Logger($logDir, channel: 'hashes');
+
+$lock = new Lock($lockPath);
+if (!$lock->acquire()) {
+    $logger->info('Другой экземпляр генерации хэшей уже запущен, выходим', ['event' => 'lock_busy']);
+    exit(0);
+}
+register_shutdown_function([$lock, 'release']);
+
+if (!is_dir($filesDir)) {
+    $logger->warn("Каталог {$filesDir} не существует — нечего хэшировать");
+    exit(0);
 }
 
-echo "Начинаем вычисление хэшей для всех файлов...\n";
+$hashCache = new HashCache($cacheDir);
+
+$logger->info('Начинаем вычисление хэшей', ['event' => 'hashes_start']);
+
+$paths = collectFiles($filesDir);
+$computed = 0;
+$cached   = 0;
+
+foreach ($paths as $path) {
+    $existed = $hashCache->get($path);
+    if ($existed !== null) {
+        $cached++;
+        continue;
+    }
+
+    $size = @filesize($path);
+    $logger->info(sprintf(
+        'Считаем хэш: %s (%s)',
+        basename($path),
+        humanSize($size !== false ? (int)$size : 0)
+    ), ['event' => 'hash_compute', 'path' => $path]);
+
+    $start = microtime(true);
+    $hash  = $hashCache->getOrCompute($path);
+    $dur   = microtime(true) - $start;
+
+    if ($hash === null) {
+        $logger->warn("Не удалось посчитать хэш: {$path}", ['event' => 'hash_fail', 'path' => $path]);
+        continue;
+    }
+
+    $logger->info(sprintf('  готово за %.2f сек: %s', $dur, $hash), [
+        'event'    => 'hash_done',
+        'path'     => $path,
+        'hash'     => $hash,
+        'duration' => round($dur, 3),
+    ]);
+    $computed++;
+}
+
+$removed = $hashCache->pruneOrphans($paths);
+
+$logger->info(sprintf(
+    'Готово: новых хэшей %d, из кэша %d, осиротевших удалено %d',
+    $computed, $cached, $removed
+), ['event' => 'hashes_done', 'computed' => $computed, 'from_cache' => $cached, 'pruned' => $removed]);
 
 /**
- * Вычисляет или получает из кэша хэш файла
+ * Рекурсивный обход files/ — возвращает все обычные файлы (любая глубина).
+ *
+ * @return list<string>
  */
-function computeHashForFile($filePath, $cacheDir) {
-    $cacheFile = $cacheDir . DIRECTORY_SEPARATOR . md5($filePath) . '.cache';
-    $fileSize = filesize($filePath);
-    $fileMTime = filemtime($filePath);
-
-    // Проверяем кэш
-    if (file_exists($cacheFile)) {
-        $cacheData = json_decode(file_get_contents($cacheFile), true);
-        if ($cacheData && $cacheData['mtime'] == $fileMTime && $cacheData['size'] == $fileSize) {
-            return $cacheData['hash']; // Уже есть в кэше
+function collectFiles(string $root): array
+{
+    $out = [];
+    $iter = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS)
+    );
+    foreach ($iter as $f) {
+        /** @var SplFileInfo $f */
+        if ($f->isFile()) {
+            // .gitkeep и подобные служебные файлы не хэшируем
+            if ($f->getFilename() === '.gitkeep') continue;
+            $out[] = $f->getPathname();
         }
     }
-
-    echo "Вычисляем хэш для: " . basename($filePath) . " (" . number_format($fileSize / 1024 / 1024, 2) . " MB)...\n";
-
-    $startTime = microtime(true);
-    $hash = hash_file('sha256', $filePath);
-    $endTime = microtime(true);
-
-    echo "  Готово за " . number_format($endTime - $startTime, 2) . " сек. Хэш: " . $hash . "\n";
-
-    // Сохраняем в кэш с префиксом
-    file_put_contents($cacheFile, json_encode([
-        'hash' => 'sha256:' . $hash,
-        'raw_hash' => $hash,
-        'mtime' => $fileMTime,
-        'size' => $fileSize
-    ]));
-
-    return 'sha256:' . $hash;
+    return $out;
 }
 
-/**
- * Рекурсивно собирает все локальные файлы и формирует массив md5 имен для кэш-файлов
- */
-function getAllLocalFileHashNames(string $dir): array {
-    $hashes = [];
-
-    $rii = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir));
-
-    foreach ($rii as $file) {
-        if ($file->isFile()) {
-            $path = $file->getPathname();
-            $hashes[md5($path)] = true;
-        }
+function humanSize(int $bytes): string
+{
+    if ($bytes <= 0) return '0 B';
+    $u = ['B','KB','MB','GB','TB'];
+    $i = 0;
+    $n = (float)$bytes;
+    while ($n >= 1024 && $i < count($u) - 1) {
+        $n /= 1024;
+        $i++;
     }
-
-    return $hashes;
+    return number_format($n, $n < 10 ? 1 : 0) . ' ' . $u[$i];
 }
-
-/**
- * Очищает папку кэша от файлов без соответствия в локальных файлах
- */
-function cleanCacheDir(string $cacheDir, array $validHashes) {
-    if (!is_dir($cacheDir)) return;
-
-    foreach (scandir($cacheDir) as $file) {
-        if ($file === '.' || $file === '..') continue;
-        $fullPath = $cacheDir . DIRECTORY_SEPARATOR . $file;
-        if (!is_file($fullPath)) continue;
-
-        $fileBase = pathinfo($file, PATHINFO_FILENAME); // md5 имя без расширения
-
-        if (!isset($validHashes[$fileBase])) {
-            // Удаляем устаревший кеш
-            unlink($fullPath);
-            echo "Удален устаревший кэш: {$file}\n";
-        }
-    }
-}
-
-// Вычисляем хэши для всех файлов
-processDirectory($dir, $cacheDir);
-
-// Получаем список валидных кэшей и очищаем папку кэша
-$validHashes = getAllLocalFileHashNames($dir);
-cleanCacheDir($cacheDir, $validHashes);
-
-echo "Все хэши вычислены и кэш очищен.\n";
-
-/**
- * Рекурсивный обход каталога для вычисления хэшей
- */
-function processDirectory($dirPath, $cacheDir) {
-    if (!is_dir($dirPath)) {
-        echo "Директория $dirPath не найдена\n";
-        return;
-    }
-
-    foreach (scandir($dirPath) as $item) {
-        if ($item === '.' || $item === '..') continue;
-
-        $itemPath = $dirPath . DIRECTORY_SEPARATOR . $item;
-
-        if (is_dir($itemPath)) {
-            echo "Обрабатываем папку: $item\n";
-            processDirectory($itemPath, $cacheDir);
-        } elseif (is_file($itemPath)) {
-            computeHashForFile($itemPath, $cacheDir);
-        }
-    }
-}
-?>

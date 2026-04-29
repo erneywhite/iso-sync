@@ -1,0 +1,71 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "iso-sync configuration",
+    "type": "object",
+    "required": ["files"],
+    "properties": {
+        "files": {
+            "type": "object",
+            "description": "Карта: имя локального файла -> описание источника",
+            "additionalProperties": {
+                "type": "object",
+                "required": ["url_dir", "remote_name"],
+                "properties": {
+                    "local_subdir": {
+                        "type": "string",
+                        "description": "Подпапка внутри files/ для хранения"
+                    },
+                    "url_dir": {
+                        "type": "string",
+                        "format": "uri",
+                        "description": "Базовый URL директории на удалённом сервере (со слешем в конце)"
+                    },
+                    "remote_name": {
+                        "type": "string",
+                        "description": "Имя файла на удалённом сервере. 'latest' = автопоиск по latest_pattern"
+                    },
+                    "force_download_without_checksum": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Качать файл, даже если SHA256SUMS не найден или нет записи о нём"
+                    },
+                    "skip_if_unchanged": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Для force-загрузок: пропускать, если HEAD говорит что файл не изменился (по Content-Length и Last-Modified)"
+                    },
+                    "insecure_ssl": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Отключить проверку SSL для проблемных зеркал. По умолчанию проверяется."
+                    },
+                    "latest_pattern": {
+                        "type": "string",
+                        "default": "/dvd/i",
+                        "description": "PCRE-регэксп для поиска файла по 'latest'. Из совпадений выбирается версионно-старший."
+                    },
+                    "checksum_files": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Переопределить дефолтный список имён файлов с чексуммами для пробы"
+                    },
+                    "gpg": {
+                        "type": "object",
+                        "description": "Опциональная проверка GPG-подписи на SHA256SUMS",
+                        "properties": {
+                            "signature_url": {
+                                "type": "string",
+                                "format": "uri",
+                                "description": "URL подписи (обычно SHA256SUMS.gpg или .sign)"
+                            },
+                            "key_fingerprint": {
+                                "type": "string",
+                                "description": "Отпечаток ключа (для проверки доверия). Ключ должен быть импортирован в системный gpg keyring."
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

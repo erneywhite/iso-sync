@@ -1,62 +1,87 @@
 <?php
-$dir = __DIR__ . DIRECTORY_SEPARATOR . 'files';
-$webDir = 'files';
-$items = [];
+declare(strict_types=1);
 
-// Простая функция получения хэша из кэша
-function getCachedHash($filePath) {
-    $cacheFile = __DIR__ . DIRECTORY_SEPARATOR . '.hash_cache' . DIRECTORY_SEPARATOR . md5($filePath) . '.cache';
+require_once __DIR__ . '/lib/bootstrap.php';
 
-    if (file_exists($cacheFile)) {
-        $cacheData = json_decode(file_get_contents($cacheFile), true);
-        $fileMTime = filemtime($filePath);
-        $fileSize = filesize($filePath);
+use IsoSync\Config;
+use IsoSync\HashCache;
 
-        if ($cacheData && $cacheData['mtime'] == $fileMTime && $cacheData['size'] == $fileSize) {
-            // Если в кэше есть новый формат с префиксом - используем его
-            if (isset($cacheData['hash']) && strpos($cacheData['hash'], 'sha256:') === 0) {
-                return $cacheData['hash'];
-            }
-            // Если старый формат - добавляем префикс
-            if (isset($cacheData['hash'])) {
-                return 'sha256:' . $cacheData['hash'];
-            }
+$baseDir   = __DIR__;
+$filesDir  = $baseDir . '/files';
+$cacheDir  = $baseDir . '/.hash_cache';
+$webDir    = 'files';
+$logsDir   = $baseDir . '/logs';
+$configPath = $baseDir . '/config/iso-list.json';
+
+$hashCache = new HashCache($cacheDir);
+
+// Сводка последнего прогона update_iso (если есть)
+$lastRun = null;
+$lastRunPath = $logsDir . '/last_run.json';
+if (is_file($lastRunPath)) {
+    $raw = @file_get_contents($lastRunPath);
+    if ($raw !== false) {
+        $decoded = json_decode($raw, true);
+        if (is_array($decoded)) {
+            $lastRun = $decoded;
         }
     }
-
-    // Если хэша нет в кэше - возвращаем placeholder
-    return 'sha256:not_computed_yet';
 }
 
-if (is_dir($dir)) {
-    foreach (scandir($dir) as $name) {
-        if ($name === '.' || $name === '..') continue;
-        $path = $dir . DIRECTORY_SEPARATOR . $name;
+// Список из конфига для подсчёта отсутствующих
+$configFiles = [];
+$missing = [];
+if (is_file($configPath)) {
+    try {
+        $cfg = Config::loadFromFile($configPath);
+        foreach ($cfg->files as $entry) {
+            $expectedPath = $filesDir
+                . ($entry->localSubdir !== '' ? DIRECTORY_SEPARATOR . $entry->localSubdir : '')
+                . DIRECTORY_SEPARATOR . $entry->localName;
+            $configFiles[$entry->localName] = $expectedPath;
+            if (!is_file($expectedPath)) {
+                $missing[] = [
+                    'name'      => $entry->localName,
+                    'subdir'    => $entry->localSubdir,
+                    'remote'    => $entry->urlDir . ($entry->isLatest() ? '(latest)' : $entry->remoteName),
+                ];
+            }
+        }
+    } catch (Throwable) {
+        // Конфиг битый — UI всё равно отрисуем без блока missing
+    }
+}
+
+$items = [];
+if (is_dir($filesDir)) {
+    foreach (scandir($filesDir) ?: [] as $name) {
+        if ($name === '.' || $name === '..' || $name === '.gitkeep') continue;
+        $path = $filesDir . DIRECTORY_SEPARATOR . $name;
         if (is_dir($path)) {
             $children = [];
-            foreach (scandir($path) as $c) {
-                if ($c === '.' || $c === '..') continue;
+            foreach (scandir($path) ?: [] as $c) {
+                if ($c === '.' || $c === '..' || $c === '.gitkeep') continue;
                 $cp = $path . DIRECTORY_SEPARATOR . $c;
                 if (is_file($cp)) {
                     $children[] = [
-                        'name' => $c,
-                        'size' => filesize($cp),
+                        'name'  => $c,
+                        'size'  => filesize($cp),
                         'mtime' => filemtime($cp),
-                        'type' => getCachedHash($cp)
+                        'type'  => $hashCache->get($cp) ?? 'sha256:not_computed_yet',
                     ];
                 }
             }
             $items[] = [
-                'name' => $name,
-                'type' => 'dir',
-                'children' => $children
+                'name'     => $name,
+                'type'     => 'dir',
+                'children' => $children,
             ];
         } elseif (is_file($path)) {
             $items[] = [
-                'name' => $name,
-                'size' => filesize($path),
+                'name'  => $name,
+                'size'  => filesize($path),
                 'mtime' => filemtime($path),
-                'type' => getCachedHash($path)
+                'type'  => $hashCache->get($path) ?? 'sha256:not_computed_yet',
             ];
         }
     }
@@ -76,6 +101,9 @@ if (is_dir($dir)) {
     --muted:#9fb0c1;
     --accent:#56c1ff;
     --accent-dark:#2ea3dc;
+    --ok:#4ade80;
+    --warn:#fbbf24;
+    --err:#f87171;
     --radius:12px;
 }
 *{box-sizing:border-box}
@@ -86,7 +114,7 @@ body{
     color:#e9f3fb;
 }
 .container{max-width:1120px;margin:36px auto;padding:20px;display:flex;flex-direction:column;height:calc(100vh - 72px)}
-header{display:flex;align-items:center;gap:16px;justify-content:space-between;margin-bottom:22px}
+header{display:flex;align-items:center;gap:16px;justify-content:space-between;margin-bottom:14px}
 .brand{display:flex;align-items:center;gap:14px}
 .logo-img{width:48px;height:48px;border-radius:10px}
 h1{margin:0;font-size:22px;background:linear-gradient(90deg,var(--accent),#9ae2ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
@@ -94,6 +122,16 @@ h1{margin:0;font-size:22px;background:linear-gradient(90deg,var(--accent),#9ae2f
 .search{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);padding:10px 12px;border-radius:10px;color:inherit;min-width:300px}
 .sort{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);padding:8px 10px;border-radius:10px;color:var(--muted)}
 .view-toggle{background:transparent;border:1px solid rgba(255,255,255,0.06);padding:8px 10px;border-radius:10px;color:var(--muted);cursor:pointer}
+
+/* Полоса статуса */
+.status-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px;padding:10px 14px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);font-size:13px;color:var(--muted)}
+.status-bar .pill{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;background:rgba(255,255,255,0.04);font-weight:600}
+.status-bar .pill.ok{color:var(--ok)}
+.status-bar .pill.warn{color:var(--warn)}
+.status-bar .pill.err{color:var(--err)}
+.status-bar .pill.muted{color:var(--muted)}
+.status-bar .sep{opacity:.4}
+
 .card{background:rgba(255,255,255,0.015);border-radius:var(--radius);padding:14px;box-shadow:0 6px 30px rgba(2,8,23,0.6);flex:1 1 auto;overflow-y:auto}
 .card::-webkit-scrollbar{width:10px}
 .card::-webkit-scrollbar-thumb{background:linear-gradient(180deg,rgba(86,193,255,0.4),rgba(86,193,255,0.15));border-radius:10px}
@@ -104,10 +142,11 @@ h1{margin:0;font-size:22px;background:linear-gradient(90deg,var(--accent),#9ae2f
 .row:focus{outline:2px solid rgba(86,193,255,0.18);outline-offset:4px;transform:translateY(-3px)}
 .thumb{width:48px;height:48px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.06);color:var(--accent);font-size:14px;font-weight:600;box-shadow:0 0 8px rgba(86,193,255,0.06) inset}
 .thumb.folder{background:linear-gradient(135deg,var(--accent),#7ad9ff);color:#012;font-size:18px}
+.thumb.missing{background:rgba(248,113,113,0.12);color:var(--err)}
 .icon{width:28px;height:28px;display:block}
 .meta{flex:1;min-width:0}
 .filename{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:8px}
-.sub{font-size:13px;color:var(--muted);margin-top:6px}
+.sub{font-size:13px;color:var(--muted);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .match-badge{display:inline-block;margin-left:8px;background:rgba(86,193,255,0.15);color:var(--accent);padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700}
 .btns{display:flex;align-items:center;gap:10px}
 .primary{background:linear-gradient(90deg,var(--accent),#7ad9ff);padding:9px 14px;border-radius:10px;border:none;color:#012;font-weight:700;text-decoration:none;transition:transform .12s,box-shadow .12s}
@@ -166,10 +205,17 @@ h1{margin:0;font-size:22px;background:linear-gradient(90deg,var(--accent),#9ae2f
     font-style: italic;
     cursor: default;
 }
+
+/* Блок отсутствующих */
+.missing-block{margin-top:18px;padding:12px 14px;border-radius:10px;background:rgba(248,113,113,0.06);border:1px dashed rgba(248,113,113,0.25)}
+.missing-block h2{margin:0 0 10px 0;font-size:15px;color:var(--err);display:flex;align-items:center;gap:8px}
+.missing-block .row{background:rgba(255,255,255,0.015)}
+.missing-block .row:hover{transform:none}
+.missing-block.collapsed .missing-list{display:none}
+.missing-toggle{cursor:pointer;user-select:none}
 </style>
 </head>
 <body>
-<!-- SVG-иконки (используем через <use>) -->
 <svg style="display:none" aria-hidden="true">
   <symbol id="ic-folder" viewBox="0 0 24 24">
     <path d="M10 4H4a2 2 0 0 0-2 2v2h20V6a2 2 0 0 0-2-2h-8l-2-2zM2 10v8a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-8H2z"/>
@@ -184,6 +230,7 @@ h1{margin:0;font-size:22px;background:linear-gradient(90deg,var(--accent),#9ae2f
   <symbol id="ic-download" viewBox="0 0 24 24"><path d="M5 20h14v-2H5v2zm7-18L5.33 9h3.67v4h4V9h3.67L12 2z"/></symbol>
   <symbol id="ic-copy" viewBox="0 0 24 24"><path d="M16 1H4a2 2 0 0 0-2 2v12h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></symbol>
   <symbol id="ic-link" viewBox="0 0 24 24"><path d="M3.9 12a5 5 0 0 0 0 7.07l1.42 1.42a5 5 0 0 0 7.07 0l3.54-3.54-1.41-1.41L11 19.07a3 3 0 0 1-4.24 0L5.33 17A3 3 0 0 1 5.33 13L3.9 12zM20.1 12a5 5 0 0 0 0-7.07L18.68 3.51a5 5 0 0 0-7.07 0L8.07 6.05 9.48 7.46 13 3.93a3 3 0 0 1 4.24 0l1.42 1.42a3 3 0 0 1 0 4.24l-1.42 1.42L20.1 12z"/></symbol>
+  <symbol id="ic-warn" viewBox="0 0 24 24"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></symbol>
 </svg>
 
     <div class="container">
@@ -204,20 +251,95 @@ h1{margin:0;font-size:22px;background:linear-gradient(90deg,var(--accent),#9ae2f
                 </select>
             </div>
         </header>
+
+        <div id="status-bar" class="status-bar"></div>
+
         <div class="card">
             <div id="count" class="count">Загружается...</div>
             <div id="list" class="list" role="list"></div>
+
+            <div id="missing-block" class="missing-block" style="display:none">
+                <h2 class="missing-toggle">
+                    <svg class="icon" style="width:18px;height:18px" aria-hidden="true"><use href="#ic-warn"></use></svg>
+                    <span id="missing-title">Отсутствующие файлы</span>
+                    <span style="margin-left:auto;font-size:12px;color:var(--muted)">— ожидаются по конфигу, но не найдены на диске</span>
+                </h2>
+                <div id="missing-list" class="list missing-list"></div>
+            </div>
         </div>
     </div>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
     <script>
         const FILES = <?php echo json_encode($items, JSON_UNESCAPED_UNICODE); ?> || [];
+        const MISSING = <?php echo json_encode($missing, JSON_UNESCAPED_UNICODE); ?> || [];
+        const LAST_RUN = <?php echo json_encode($lastRun, JSON_UNESCAPED_UNICODE); ?>;
         const webDir = '<?php echo addslashes($webDir); ?>';
 
         function escapeHtml(unsafe){return String(unsafe).replace(/[&<>\"']/g, function(m){return{'&':'&amp;','<':'&lt;','>':'&gt;','\\"':'&quot;','"':'&quot;',"'":"&#39;"}[m]||m;});}
         function humanSize(bytes){if(bytes===0)return'0 B';const thresh=1024;const units=['B','KB','MB','GB','TB'];let u=0;let n=bytes;while(n>=thresh&&u<units.length-1){n/=thresh;u++;}return Math.round(n*10)/10+' '+units[u];}
         function fmtDate(ts){const d=new Date(ts*1000);return d.toLocaleString();}
+        function fmtIso(iso){if(!iso)return'—';try{return new Date(iso).toLocaleString();}catch(e){return iso;}}
+        function relativeTime(iso){
+            if(!iso) return '';
+            try{
+                const then = new Date(iso).getTime();
+                const diff = Math.floor((Date.now() - then) / 1000);
+                if(diff < 60) return 'только что';
+                if(diff < 3600) return Math.floor(diff/60) + ' мин назад';
+                if(diff < 86400) return Math.floor(diff/3600) + ' ч назад';
+                return Math.floor(diff/86400) + ' дн назад';
+            } catch(e) { return ''; }
+        }
+
+        function renderStatusBar(){
+            const el = document.getElementById('status-bar');
+            if(!LAST_RUN){
+                el.innerHTML = '<span class="pill muted">Последняя проверка: данных нет</span><span class="sep">·</span><span>Запустите <code>php update_iso.php</code></span>';
+                return;
+            }
+            const ts = LAST_RUN.finished_at || LAST_RUN.started_at;
+            const rel = relativeTime(ts);
+            const parts = [];
+            parts.push(`<span class="pill muted">Последняя проверка: ${fmtIso(ts)}${rel ? ' (' + rel + ')' : ''}</span>`);
+            if(typeof LAST_RUN.total === 'number'){
+                parts.push('<span class="sep">·</span>');
+                parts.push(`<span class="pill ok">обновлено ${LAST_RUN.updated || 0}</span>`);
+                parts.push(`<span class="pill muted">актуально ${LAST_RUN.up_to_date || 0}</span>`);
+                if(LAST_RUN.skipped) parts.push(`<span class="pill muted">пропущено ${LAST_RUN.skipped}</span>`);
+                if(LAST_RUN.failed) parts.push(`<span class="pill err">ошибки ${LAST_RUN.failed}</span>`);
+                if(typeof LAST_RUN.duration_s === 'number') parts.push(`<span class="pill muted">${LAST_RUN.duration_s} сек</span>`);
+            }
+            if(LAST_RUN.fatal){
+                parts.push(`<span class="pill err">FATAL: ${escapeHtml(LAST_RUN.fatal)}</span>`);
+            }
+            el.innerHTML = parts.join(' ');
+        }
+
+        function renderMissing(){
+            const block = document.getElementById('missing-block');
+            const list = document.getElementById('missing-list');
+            const title = document.getElementById('missing-title');
+            list.innerHTML = '';
+            if(!Array.isArray(MISSING) || MISSING.length === 0){
+                block.style.display = 'none';
+                return;
+            }
+            block.style.display = '';
+            title.textContent = `Отсутствующие файлы (${MISSING.length})`;
+            MISSING.forEach(m => {
+                const row = document.createElement('div'); row.className = 'row';
+                const thumb = document.createElement('div'); thumb.className = 'thumb missing'; thumb.innerHTML = '<svg class="icon" aria-hidden="true"><use href="#ic-warn"></use></svg>';
+                const meta = document.createElement('div'); meta.className = 'meta';
+                const name = document.createElement('div'); name.className = 'filename'; name.textContent = m.name;
+                const sub = document.createElement('div'); sub.className = 'sub';
+                sub.textContent = (m.subdir ? `files/${m.subdir}/  ←  ` : 'files/  ←  ') + m.remote;
+                sub.title = m.remote;
+                meta.appendChild(name); meta.appendChild(sub);
+                row.appendChild(thumb); row.appendChild(meta);
+                list.appendChild(row);
+            });
+        }
 
         function highlightSnippet(name, q){
             const raw = String(name);
@@ -231,10 +353,8 @@ h1{margin:0;font-size:22px;background:linear-gradient(90deg,var(--accent),#9ae2f
             const start = Math.max(0, idx - 12);
             const end = Math.min(raw.length, idx + q.length + 12);
             let snippet = raw.slice(start, end);
-            // add ellipses
             if(start > 0) snippet = '…' + snippet;
             if(end < raw.length) snippet = snippet + '…';
-            // escape and highlight
             const esc = escapeHtml(snippet);
             const regex = new RegExp('('+q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')', 'ig');
             const highlighted = esc.replace(regex, '<mark>$1</mark>');
@@ -247,13 +367,11 @@ h1{margin:0;font-size:22px;background:linear-gradient(90deg,var(--accent),#9ae2f
             if(/(jpe?g|png|gif|webp|svg)/.test(ext)) return '<svg class="icon" aria-hidden="true"><use href="#ic-file"></use></svg>';
             if(/(pdf)/.test(ext)) return '<svg class="icon" aria-hidden="true"><use href="#ic-file"></use></svg>';
             if(/(iso)/.test(ext)) return '<svg class="icon" aria-hidden="true"><use href="#ic-iso"></use></svg>';
-            // default
             return '<svg class="icon" aria-hidden="true"><use href="#ic-file"></use></svg>';
         }
 
         function copyToClipboard(text){if(navigator.clipboard){navigator.clipboard.writeText(text).then(()=>showToast('Скопировано в буфер'))}else{const t=document.createElement('textarea');t.value=text;document.body.appendChild(t);t.select();try{document.execCommand('copy');showToast('Скопировано в буфер');}catch(e){showToast('Не удалось скопировать');}document.body.removeChild(t);}}
 
-        // Функция для создания кликабельного хэша
         function createClickableHash(hashValue) {
             if (!hashValue || hashValue === 'sha256:not_computed_yet') {
                 const span = document.createElement('span');
@@ -271,11 +389,9 @@ h1{margin:0;font-size:22px;background:linear-gradient(90deg,var(--accent),#9ae2f
                 e.preventDefault();
                 e.stopPropagation();
 
-                // Копируем только сам хэш без префикса sha256:
                 const hashOnly = hashValue.replace('sha256:', '');
                 copyToClipboard(hashOnly);
 
-                // Показываем анимацию
                 const originalColor = span.style.color;
                 span.style.color = '#4ade80';
                 setTimeout(() => {
@@ -286,24 +402,7 @@ h1{margin:0;font-size:22px;background:linear-gradient(90deg,var(--accent),#9ae2f
             return span;
         }
 
-        // Модифицируем функцию для замены хэша в тексте
-        function replaceHashInText(element, hashValue) {
-            const text = element.textContent;
-            const parts = text.split(' • ');
-
-            if (parts.length >= 3) {
-                // Очищаем элемент
-                element.innerHTML = '';
-
-                // Добавляем размер и дату
-                element.appendChild(document.createTextNode(parts[0] + ' • ' + parts[1] + ' • '));
-
-                // Добавляем кликабельный хэш
-                element.appendChild(createClickableHash(hashValue));
-            }
-        }
-
-        const listEl=document.getElementById('list'),countEl=document.getElementById('count'),searchInput=document.getElementById('search'),sortSelect=document.getElementById('sort'),toast=document.getElementById('toast'),viewToggle=document.getElementById('viewToggle');
+        const listEl=document.getElementById('list'),countEl=document.getElementById('count'),searchInput=document.getElementById('search'),sortSelect=document.getElementById('sort'),toast=document.getElementById('toast');
         let lastQuery = '';
 
         function showToast(t){toast.textContent=t;toast.classList.add('show');clearTimeout(showToast._t);showToast._t=setTimeout(()=>toast.classList.remove('show'),1600);}
@@ -368,7 +467,6 @@ h1{margin:0;font-size:22px;background:linear-gradient(90deg,var(--accent),#9ae2f
                 const meta=document.createElement('div');meta.className='meta';
                 const name=document.createElement('div');name.className='filename';
 
-                // highlight snippet and match count
                 const dirNameHighlight = highlightSnippet(dir.name,lastQuery);
                 name.innerHTML = dirNameHighlight.html;
                 if((dir._dirMatch) || (Array.isArray(dir.children) && dir.children.length>0 && lastQuery)){
@@ -432,7 +530,6 @@ h1{margin:0;font-size:22px;background:linear-gradient(90deg,var(--accent),#9ae2f
 
                 listEl.appendChild(childrenWrap);
 
-                // авто-открытие папки при активном поиске и наличии совпадений
                 if (lastQuery && Array.isArray(dir.children) && (dir._dirMatch || dir.children.some(c=>c.name.toLowerCase().includes(lastQuery)))) {
                     const arrow = toggle.querySelector('.toggle-arrow'); if(arrow) arrow.classList.add('expanded');
                     animateOpen(childrenWrap);
@@ -440,7 +537,6 @@ h1{margin:0;font-size:22px;background:linear-gradient(90deg,var(--accent),#9ae2f
                     toggle.setAttribute('aria-expanded','true');
                 }
 
-                // открыть/закрыть по клику на всю строку (кроме кликов по кнопкам внутри .btns)
                 row.addEventListener('click', function(e){
                     if (e.target.closest('.btns')) return;
                     const isOpen = childrenWrap.classList.contains('open');
@@ -457,7 +553,6 @@ h1{margin:0;font-size:22px;background:linear-gradient(90deg,var(--accent),#9ae2f
                     }
                 });
 
-                // keyboard on row
                 row.addEventListener('keydown', e=>{ if(e.key==='Enter'){ row.click(); } if(e.key===' '){ e.preventDefault(); const cb = row.querySelector('.copy-toggle'); if(cb) cb.click(); } });
 
             });
@@ -495,12 +590,10 @@ h1{margin:0;font-size:22px;background:linear-gradient(90deg,var(--accent),#9ae2f
 
                 btns.appendChild(dl);btns.appendChild(group);row.appendChild(thumb);row.appendChild(meta);row.appendChild(btns);listEl.appendChild(row);
 
-                // keyboard: Enter -> download
                 row.addEventListener('keydown', e=>{ if(e.key==='Enter'){ const a = row.querySelector('a.primary'); if(a) a.click(); } if(e.key===' '){ e.preventDefault(); const cb = row.querySelector('.copy-toggle'); if(cb) cb.click(); } });
             });
         }
 
-        // close open menus when clicking outside
         document.addEventListener('click',function(e){ if(!e.target.closest('.copy-group') && !e.target.classList.contains('ghost')){ document.querySelectorAll('.dd-menu.show').forEach(m=>setMenuOpen(m,false));}});
 
         function apply(){
@@ -555,9 +648,9 @@ h1{margin:0;font-size:22px;background:linear-gradient(90deg,var(--accent),#9ae2f
             render(items);
         }
 
-        // initial skeleton then render quickly
+        renderStatusBar();
+        renderMissing();
         createSkeleton(6);
-        // small delay so skeleton is visible for a moment — выглядит плавнее
         setTimeout(()=>apply(),120);
 
         searchInput.addEventListener('input', ()=>{
@@ -566,8 +659,6 @@ h1{margin:0;font-size:22px;background:linear-gradient(90deg,var(--accent),#9ae2f
         });
         sortSelect.addEventListener('change',apply);
 
-
-        // Close menus on Escape
         document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ document.querySelectorAll('.dd-menu.show').forEach(m=>setMenuOpen(m,false)); } });
     </script>
 </body>

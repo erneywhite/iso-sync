@@ -1,0 +1,31 @@
+# ISO files (хранятся локально, не коммитим)
+files/**
+!files/.gitkeep
+
+# Кэш SHA256
+.hash_cache/
+**/.hash_cache/
+
+# Временные загрузки
+*.tmp
+
+# Логи (всё внутри, кроме .gitkeep)
+logs/*
+!logs/.gitkeep
+
+# Локальная блокировка
+*.lock
+
+# Локальные оверрайды конфига
+config/iso-list.local.json
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Vendor (на случай будущего composer)
+/vendor/
