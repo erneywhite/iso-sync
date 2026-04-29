@@ -43,13 +43,14 @@ final class Aria2Downloader implements DownloaderInterface
     }
 
     /**
+     * @param ?array{mtime:int,size:int} $localFileInfo
      * @return array{success:bool, skipped:bool, expected_size:?int, actual_size:?int, error:?string}
      */
     public function download(
         string $url,
         string $destination,
         bool $insecure = false,
-        ?int $expectedLastModified = null,
+        ?array $localFileInfo = null,
         bool $checkUnchanged = false
     ): array {
         if ($this->aria2Bin === null) {
@@ -62,14 +63,21 @@ final class Aria2Downloader implements DownloaderInterface
         $expectedSize = $head['content_length'] ?? null;
         $remoteMTime  = $head['last_modified']  ?? null;
 
-        if ($checkUnchanged && $expectedLastModified !== null && $remoteMTime !== null
-            && $remoteMTime <= $expectedLastModified) {
-            $this->logger->info('Файл не изменился по Last-Modified, пропуск', [
-                'event' => 'skip_unchanged',
-                'url'   => $url,
-            ]);
-            return ['success' => true, 'skipped' => true, 'expected_size' => $expectedSize,
-                    'actual_size' => null, 'error' => null];
+        // skip_if_unchanged: совпадение И размера И mtime → файл точно не менялся
+        if ($checkUnchanged && $localFileInfo !== null) {
+            $sizeMatch  = $expectedSize !== null && $expectedSize === $localFileInfo['size'];
+            $mtimeMatch = $remoteMTime !== null  && $remoteMTime  <= $localFileInfo['mtime'];
+            if ($sizeMatch && $mtimeMatch) {
+                $this->logger->info('Файл не изменился (size+mtime совпали), пропуск', [
+                    'event'        => 'skip_unchanged',
+                    'url'          => $url,
+                    'size'         => $expectedSize,
+                    'remote_mtime' => $remoteMTime ? date('c', $remoteMTime) : null,
+                    'local_mtime'  => date('c', $localFileInfo['mtime']),
+                ]);
+                return ['success' => true, 'skipped' => true, 'expected_size' => $expectedSize,
+                        'actual_size' => null, 'error' => null];
+            }
         }
 
         $tmpDir  = dirname($destination);

@@ -19,36 +19,44 @@ final class Downloader implements DownloaderInterface
     ) {}
 
     /**
-     * Скачивает $url в $destination. Перед загрузкой делает HEAD, чтобы:
-     *  1) узнать ожидаемый Content-Length и сверить после загрузки;
-     *  2) дать возможность пропустить, если remote не изменился (skip_if_unchanged).
-     *
-     * @param string $url
-     * @param string $destination абсолютный путь к .tmp-файлу
-     * @param bool   $insecure отключение SSL для конкретного хоста
-     * @param ?int   $expectedLastModified для skip_if_unchanged: mtime текущего локального файла
+     * @param ?array{mtime:int,size:int} $localFileInfo
      * @return array{success:bool, skipped:bool, expected_size:?int, actual_size:?int, error:?string}
      */
     public function download(
         string $url,
         string $destination,
         bool $insecure = false,
-        ?int $expectedLastModified = null,
+        ?array $localFileInfo = null,
         bool $checkUnchanged = false
     ): array {
         $head = $this->http->head($url, $insecure);
         $expectedSize = $head['content_length'] ?? null;
         $remoteMTime  = $head['last_modified']  ?? null;
 
-        if ($checkUnchanged && $expectedLastModified !== null && $remoteMTime !== null
-            && $remoteMTime <= $expectedLastModified) {
-            $this->logger->info('Файл не изменился по Last-Modified, пропуск', [
-                'event' => 'skip_unchanged',
-                'url'   => $url,
-                'remote_mtime' => date('c', $remoteMTime),
-                'local_mtime'  => date('c', $expectedLastModified),
-            ]);
-            return ['success' => true, 'skipped' => true, 'expected_size' => $expectedSize, 'actual_size' => null, 'error' => null];
+        // skip_if_unchanged: HEAD-проверяем что и размер И Last-Modified совпадают.
+        // Достаточно надёжно для force_download_without_checksum записей вроде virtio-win,
+        // где у upstream'а нет SHA256 для самого ISO. Размер ловит случай когда сервер
+        // touch-нул файл (mtime=сегодня), но содержимое не менялось.
+        if ($checkUnchanged && $localFileInfo !== null) {
+            $sizeMatch  = $expectedSize !== null && $expectedSize === $localFileInfo['size'];
+            $mtimeMatch = $remoteMTime !== null  && $remoteMTime  <= $localFileInfo['mtime'];
+            if ($sizeMatch && $mtimeMatch) {
+                $this->logger->info('Файл не изменился (size+mtime совпали), пропуск', [
+                    'event'        => 'skip_unchanged',
+                    'url'          => $url,
+                    'size'         => $expectedSize,
+                    'remote_mtime' => date('c', $remoteMTime),
+                    'local_mtime'  => date('c', $localFileInfo['mtime']),
+                ]);
+                return ['success' => true, 'skipped' => true, 'expected_size' => $expectedSize, 'actual_size' => null, 'error' => null];
+            }
+            // Размер расходится → 100% надо качать
+            if ($expectedSize !== null && !$sizeMatch) {
+                $this->logger->info(sprintf(
+                    'Размер remote (%d) != local (%d), качаем заново',
+                    $expectedSize, $localFileInfo['size']
+                ), ['event' => 'size_changed', 'url' => $url]);
+            }
         }
 
         $attempt = 0;

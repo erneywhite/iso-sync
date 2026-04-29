@@ -16,8 +16,12 @@ interface DownloaderInterface
      * @param string $url
      * @param string $destination абсолютный путь к (.tmp) файлу
      * @param bool   $insecure отключение проверки SSL для конкретного хоста
-     * @param ?int   $expectedLastModified для skip_if_unchanged: mtime локального файла
-     * @param bool   $checkUnchanged true → если HEAD говорит что remote не изменился, пропустить
+     * @param ?array{mtime:int,size:int} $localFileInfo инфо о существующем локальном файле,
+     *                                  используется для skip_if_unchanged: HEAD-сравниваем
+     *                                  Content-Length с size и Last-Modified с mtime.
+     *                                  Передавай null если локального файла ещё нет.
+     * @param bool   $checkUnchanged true → если HEAD говорит что remote не изменился
+     *                              (size совпал И Last-Modified ≤ local mtime), пропустить
      *
      * @return array{success:bool, skipped:bool, expected_size:?int, actual_size:?int, error:?string}
      */
@@ -25,7 +29,7 @@ interface DownloaderInterface
         string $url,
         string $destination,
         bool $insecure = false,
-        ?int $expectedLastModified = null,
+        ?array $localFileInfo = null,
         bool $checkUnchanged = false
     ): array;
 }

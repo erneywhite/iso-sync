@@ -257,13 +257,22 @@ final class Updater
             @mkdir($dir, 0755, true);
         }
 
-        $localMTime = file_exists($localPath) ? filemtime($localPath) : null;
+        // Соберём info о существующем локальном файле для skip_if_unchanged.
+        // Downloader сравнит и Content-Length, и Last-Modified — оба должны совпасть
+        // чтобы пропустить загрузку.
+        $localFileInfo = null;
+        if (file_exists($localPath)) {
+            $localFileInfo = [
+                'mtime' => (int)filemtime($localPath),
+                'size'  => (int)filesize($localPath),
+            ];
+        }
 
         $result = $this->downloader->download(
             $url,
             $tmp,
             insecure: $entry->insecureSsl,
-            expectedLastModified: $localMTime ?: null,
+            localFileInfo: $localFileInfo,
             checkUnchanged: $entry->skipIfUnchanged && $expectedHash === null
         );
 
