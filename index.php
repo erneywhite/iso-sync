@@ -136,23 +136,30 @@ if (is_dir($filesDir)) {
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto;font-feature-settings:'cv11','ss01'}
+/* Прокрутка идёт внутри .card, body не скроллится — шапка и статус-бар фиксированы,
+   фон без шва на любом размере страницы. */
 body{
     background:
         radial-gradient(ellipse 80% 50% at 50% -10%, rgba(86,193,255,0.08) 0%, transparent 60%),
         radial-gradient(ellipse 60% 40% at 100% 100%, rgba(122,217,255,0.04) 0%, transparent 50%),
         linear-gradient(180deg,var(--bg-1),var(--bg-2));
     color:var(--text);
-    min-height:100vh;
+    height:100vh;
+    height:100dvh;
+    overflow:hidden;
 }
 ::selection{background:rgba(86,193,255,0.3);color:#fff}
 
 .container{
     max-width:min(1600px,94vw);
-    margin:28px auto;
-    padding:0 20px 28px;
+    margin:0 auto;
+    padding:28px 20px;
+    height:100vh;
+    height:100dvh;
     display:flex;
     flex-direction:column;
     gap:16px;
+    overflow:hidden;
 }
 
 /* ========== Header ========== */
@@ -261,6 +268,7 @@ h1{
     padding:16px;
     box-shadow:var(--shadow);
     flex:1 1 auto;
+    min-height:0; /* критично: без него flex-child с overflow не уменьшается, scroll не работает */
     overflow-y:auto;
 }
 .card::-webkit-scrollbar{width:10px}
