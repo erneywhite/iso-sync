@@ -299,8 +299,10 @@ h1{
     box-shadow:0 4px 12px rgba(86,193,255,0.2);
 }
 .thumb.missing{background:rgba(248,113,113,0.12);color:var(--err);box-shadow:0 0 0 1px rgba(248,113,113,0.2) inset}
-.icon{width:24px;height:24px;display:block}
+.icon{width:24px;height:24px;display:block;flex-shrink:0}
 .thumb.folder .icon{width:22px;height:22px}
+/* Базовый размер для всех инлайновых иконок (.ico) — без него SVG рендерится в дефолтные 300×150 */
+.ico{width:14px;height:14px;flex-shrink:0;display:inline-block;vertical-align:middle}
 
 .meta{min-width:0;display:flex;flex-direction:column;gap:6px}
 .filename{
@@ -541,7 +543,7 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
   <symbol id="ic-folder" viewBox="0 0 24 24"><path d="M10 4H4a2 2 0 0 0-2 2v2h20V6a2 2 0 0 0-2-2h-8l-2-2zM2 10v8a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-8H2z"/></symbol>
   <symbol id="ic-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zM14 3.5L20.5 10H14V3.5z"/></symbol>
   <symbol id="ic-iso" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="currentColor"/></symbol>
-  <symbol id="ic-download" viewBox="0 0 24 24" fill="currentColor"><path d="M5 20h14v-2H5v2zm7-18L5.33 9h3.67v4h4V9h3.67L12 2z"/></symbol>
+  <symbol id="ic-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
   <symbol id="ic-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
   <symbol id="ic-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
   <symbol id="ic-warn" viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></symbol>
