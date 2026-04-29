@@ -14,8 +14,10 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/lib/bootstrap.php';
 
+use IsoSync\Aria2Downloader;
 use IsoSync\Config;
 use IsoSync\Downloader;
+use IsoSync\DownloaderInterface;
 use IsoSync\GpgVerifier;
 use IsoSync\HashCache;
 use IsoSync\Http;
@@ -44,8 +46,27 @@ try {
     $config     = Config::loadFromFile($configPath);
     $hashCache  = new HashCache($cacheDir);
     $http       = new Http();
-    $downloader = new Downloader($http, $logger);
     $gpg        = new GpgVerifier($http, $logger);
+
+    // Выбор downloader'а: если в системе есть aria2c — берём его (multi-stream
+    // через HTTP Range, обходит per-connection rate-limit многих серверов).
+    // Иначе fallback на штатный cURL-Downloader.
+    $aria2 = new Aria2Downloader($http, $logger);
+    /** @var DownloaderInterface $downloader */
+    if ($aria2->isAvailable()) {
+        $downloader = $aria2;
+        $logger->info('Использую aria2c для загрузки: ' . $aria2->binaryPath(), [
+            'event'    => 'downloader_chosen',
+            'backend'  => 'aria2c',
+            'binary'   => $aria2->binaryPath(),
+        ]);
+    } else {
+        $downloader = new Downloader($http, $logger);
+        $logger->info('aria2c не найден, использую cURL-Downloader (apt install aria2 для ускорения)', [
+            'event'   => 'downloader_chosen',
+            'backend' => 'curl',
+        ]);
+    }
 
     $updater = new Updater(
         config:     $config,

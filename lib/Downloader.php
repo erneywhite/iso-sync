@@ -9,7 +9,7 @@ namespace IsoSync;
  *
  * Атомарность достигается на уровне вызывающего: качаем в *.tmp и rename().
  */
-final class Downloader
+final class Downloader implements DownloaderInterface
 {
     public function __construct(
         private readonly Http $http,
@@ -84,7 +84,12 @@ final class Downloader
                 CURLOPT_FAILONERROR => true,
             ]);
 
-            $progressState = ['lastDownloaded' => 0, 'lastChange' => time(), 'tickerState' => null];
+            $progressState = [
+                'lastDownloaded' => 0,
+                'lastChange'     => time(),
+                'tickerState'    => null,
+                'lastRenderMs'   => 0,
+            ];
             $logger = $this->logger;
             $maxStall = $this->maxStallSeconds;
 
@@ -92,7 +97,13 @@ final class Downloader
                 $ch,
                 CURLOPT_PROGRESSFUNCTION,
                 function ($_res, $downloadSize, $downloaded) use (&$progressState, $logger, $maxStall) {
-                    if ($downloadSize > 0) {
+                    // Рендер не чаще 4 раз в секунду — иначе fwrite+fflush на каждый
+                    // тик cURL съедает ощутимую часть CPU и тормозит I/O.
+                    $nowMs = (int)(microtime(true) * 1000);
+                    $shouldRender = ($nowMs - $progressState['lastRenderMs']) >= 250
+                        || ($downloadSize > 0 && $downloaded >= $downloadSize);
+
+                    if ($shouldRender && $downloadSize > 0) {
                         $percent = ($downloaded / $downloadSize) * 100.0;
                         $filled  = (int)round($percent / 2);
                         $bar     = str_repeat('=', $filled) . str_repeat(' ', 50 - $filled);
@@ -101,8 +112,10 @@ final class Downloader
                             self::humanSize((int)$downloaded), self::humanSize((int)$downloadSize)
                         );
                         $logger->writeProgress($line, $percent, $progressState['tickerState']);
+                        $progressState['lastRenderMs'] = $nowMs;
                     }
 
+                    // Stall-detection делаем всегда, без throttle — это дешёво.
                     if ($downloaded > $progressState['lastDownloaded']) {
                         $progressState['lastDownloaded'] = (int)$downloaded;
                         $progressState['lastChange']     = time();

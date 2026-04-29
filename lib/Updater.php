@@ -26,7 +26,7 @@ final class Updater
         private readonly Config $config,
         private readonly string $localDir,
         private readonly HashCache $hashCache,
-        private readonly Downloader $downloader,
+        private readonly DownloaderInterface $downloader,
         private readonly Http $http,
         private readonly GpgVerifier $gpg,
         private readonly Logger $logger,
