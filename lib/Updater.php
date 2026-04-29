@@ -287,7 +287,11 @@ final class Updater
         }
 
         if ($result['skipped']) {
-            return ['status' => 'skipped', 'message' => 'remote не изменился'];
+            // skip_if_unchanged сработал (size+mtime совпали с remote) — функционально
+            // это то же самое что "хэши совпали", файл актуален. Считаем up_to_date,
+            // чтобы не путать пользователя счётчиком "пропущено" для штатной ситуации.
+            // Статус "skipped" остаётся для discovery-агрегата когда все папки 404.
+            return ['status' => 'up_to_date', 'message' => 'актуален (size+mtime совпали)'];
         }
 
         // Перепроверка SHA256 после загрузки
