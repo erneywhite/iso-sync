@@ -456,8 +456,12 @@ final class Updater
      */
     public static function generateFolders(array $enum): array
     {
-        $from   = (int)($enum['from']   ?? 0);
-        $to     = (int)($enum['to']     ?? 0);
+        // Без явных from/to считаем enum невалидным (Config-валидация это и так
+        // отвергнет, но для прямых вызовов хотим предсказуемый результат).
+        if (!isset($enum['from'], $enum['to'])) return [];
+
+        $from   = (int)$enum['from'];
+        $to     = (int)$enum['to'];
         $step   = (int)($enum['step']   ?? 1);
         $format = (string)($enum['format'] ?? '{0}');
 

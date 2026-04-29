@@ -6,7 +6,12 @@ namespace IsoSync\Tests;
 use IsoSync\Updater;
 use IsoSync\FamilyResolver;
 
-require_once __DIR__ . '/../lib/bootstrap.php';
+// Прямые require без bootstrap — чтобы тест не падал, если на сервере
+// не обновился bootstrap.php (страховка против неполного ручного деплоя).
+// Тестируем static-методы Updater::generateFolders и FamilyResolver::* —
+// для них достаточно загрузить эти два файла.
+require_once __DIR__ . '/../lib/FamilyResolver.php';
+require_once __DIR__ . '/../lib/Updater.php';
 require_once __DIR__ . '/TestRunner.php';
 
 // =================================================================

@@ -131,17 +131,18 @@ final class Config
         $hasPattern  = isset($info['remote_pattern']);
         $hasTemplate = isset($info['url_template']);
 
-        // Определяем режим
-        $modes = (int)$hasName + (int)$hasPattern + (int)$hasTemplate;
-        if ($modes === 0) {
+        // remote_name взаимоисключающ с remote_pattern и url_template.
+        // url_template и remote_pattern, наоборот, ИДУТ ВМЕСТЕ в discovery-режиме —
+        // url_template определяет источник папок, remote_pattern — что внутри них искать.
+        if ($hasName && ($hasPattern || $hasTemplate)) {
             throw new RuntimeException(
-                "Запись '{$localName}': требуется один из ключей: 'remote_name' (fixed/latest), " .
-                "'remote_pattern' (family) или 'url_template' (discovery)"
+                "Запись '{$localName}': 'remote_name' нельзя комбинировать с 'remote_pattern' или 'url_template'"
             );
         }
-        if ($modes > 1) {
+        if (!$hasName && !$hasPattern && !$hasTemplate) {
             throw new RuntimeException(
-                "Запись '{$localName}': 'remote_name', 'remote_pattern' и 'url_template' взаимоисключающи"
+                "Запись '{$localName}': нужен один из ключей: 'remote_name' (fixed/latest), " .
+                "'remote_pattern' (family) или 'url_template' + 'remote_pattern' (discovery)"
             );
         }
 
@@ -158,13 +159,12 @@ final class Config
             }
             $folderEnum = self::parseFolderEnum($localName, $info['folder_enum']);
 
-            if (!isset($info['remote_pattern'])) {
+            if (!$hasPattern) {
                 throw new RuntimeException("Запись '{$localName}': discovery-режим требует 'remote_pattern'");
             }
             if (!isset($info['local_name_template'])) {
                 throw new RuntimeException("Запись '{$localName}': discovery-режим требует 'local_name_template'");
             }
-            // url_dir в discovery не нужен
             if (isset($info['url_dir'])) {
                 throw new RuntimeException("Запись '{$localName}': в discovery не используется 'url_dir' (URL строится из 'url_template')");
             }
@@ -178,9 +178,9 @@ final class Config
         // === Family / Discovery: общие поля remote_pattern + local_name_template ===
         $remotePattern = null;
         $localTemplate = null;
-        if ($hasPattern || $hasTemplate) {
+        if ($hasPattern) {
             $remotePattern = (string)$info['remote_pattern'];
-            // В discovery шаблон может содержать {folder} который не валидный regex до подстановки
+            // В discovery шаблон содержит {folder} — для валидации его подменяем
             $patternForValidation = $hasTemplate
                 ? str_replace('{folder}', 'placeholder', $remotePattern)
                 : $remotePattern;
