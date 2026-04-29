@@ -98,30 +98,6 @@ $filesToUpdate = [
         'url_dir'     => 'https://mirror.yandex.ru/archlinux/iso/latest/',
         'remote_name' => 'archlinux-x86_64.iso',
     ],
-    'Windows_Server_2022_ru.iso' => [
-        'local_subdir' => 'Windows',
-        'url_dir'     => 'https://software-static.download.prss.microsoft.com/sg/download/888969d5-f34g-4e03-ac9d-1f9786c66749/',
-        'remote_name' => 'SERVER_EVAL_x64FRE_ru-ru.iso',
-        'force_download_without_checksum' => true,
-    ],
-    'Windows_Server_2022_en.iso' => [
-        'local_subdir' => 'Windows',
-        'url_dir'     => 'https://software-static.download.prss.microsoft.com/sg/download/888969d5-f34g-4e03-ac9d-1f9786c66749/',
-        'remote_name' => 'SERVER_EVAL_x64FRE_en-us.iso',
-        'force_download_without_checksum' => true,
-    ],
-    'Windows_Server_2025_ru.iso' => [
-        'local_subdir' => 'Windows',
-        'url_dir'     => 'https://software-static.download.prss.microsoft.com/dbazure/888969d5-f34g-4e03-ac9d-1f9786c66749/',
-        'remote_name' => '26100.1742.240906-0331.ge_release_svc_refresh_SERVER_EVAL_x64FRE_ru-ru.iso',
-        'force_download_without_checksum' => true,
-    ],
-    'Windows_Server_2025_en.iso' => [
-        'local_subdir' => 'Windows',
-        'url_dir'     => 'https://software-static.download.prss.microsoft.com/dbazure/888969d5-f34g-4e03-ac9d-1f9786c66749/',
-        'remote_name' => '26100.1742.240906-0331.ge_release_svc_refresh_SERVER_EVAL_x64FRE_en-us.iso',
-        'force_download_without_checksum' => true,
-    ],
 ];
 
 $localDir = __DIR__ . DIRECTORY_SEPARATOR . 'files';
