@@ -136,8 +136,25 @@ final class Updater
 
         // Сравнение хэшей
         $remoteHash = strtolower($remoteHashes[$remoteName]);
-        $localHash  = file_exists($localPath) ? $this->hashCache->getOrCompute($localPath) : null;
-        $localHex   = HashCache::stripPrefix($localHash);
+
+        // Если локальный файл есть и кэш-промах — hash_file пробежится по всему файлу.
+        // На 8 GB ISO это ~20-30 сек тишины. Предупредим пользователя, чтобы не казалось, что зависло.
+        $localHash = null;
+        if (file_exists($localPath)) {
+            $cached = $this->hashCache->get($localPath);
+            if ($cached !== null) {
+                $localHash = $cached;
+            } else {
+                $size = (int)@filesize($localPath);
+                $this->logger->info(sprintf(
+                    'Считаем SHA256 локального файла %s (%s) — это может занять время...',
+                    basename($localPath),
+                    self::humanSize($size)
+                ), ['event' => 'local_hash_compute', 'file' => $entry->localName, 'size' => $size]);
+                $localHash = $this->hashCache->getOrCompute($localPath);
+            }
+        }
+        $localHex = HashCache::stripPrefix($localHash);
 
         $this->logger->info(sprintf(
             'Хэш local=%s remote=%s',
@@ -207,6 +224,12 @@ final class Updater
 
         // Если есть ожидаемый хэш — пере-проверяем после загрузки (доверяй, но проверяй)
         if ($expectedHash !== null) {
+            $size = (int)@filesize($tmp);
+            $this->logger->info(sprintf(
+                'Проверяем SHA256 загруженного файла (%s)...',
+                self::humanSize($size)
+            ), ['event' => 'post_download_hash_start', 'file' => $entry->localName, 'size' => $size]);
+
             $actual = hash_file('sha256', $tmp);
             if ($actual === false || !hash_equals($expectedHash, strtolower($actual))) {
                 @unlink($tmp);
@@ -268,5 +291,18 @@ final class Updater
         return $this->localDir
             . ($entry->localSubdir !== '' ? DIRECTORY_SEPARATOR . $entry->localSubdir : '')
             . DIRECTORY_SEPARATOR . $entry->localName;
+    }
+
+    private static function humanSize(int $bytes): string
+    {
+        if ($bytes <= 0) return '0 B';
+        $units = ['B','KB','MB','GB','TB'];
+        $i = 0;
+        $n = (float)$bytes;
+        while ($n >= 1024 && $i < count($units) - 1) {
+            $n /= 1024;
+            $i++;
+        }
+        return number_format($n, $n < 10 ? 1 : 0) . ' ' . $units[$i];
     }
 }

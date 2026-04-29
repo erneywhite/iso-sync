@@ -58,7 +58,10 @@ final class Logger
 
     /**
      * Пишет строку прогресс-бара. В TTY — с \r и без перевода строки.
-     * В не-TTY (cron) — выводит каждые ~10% или каждые 5 секунд, чтобы не засорять логи.
+     * В не-TTY (cron) — выводит каждые ~10% или каждые 30 секунд, чтобы не засорять логи.
+     *
+     * fflush обязателен: stdout по умолчанию line-buffered, без \n строка зависает в буфере
+     * и пользователь видит «тишину» вместо прогресса.
      */
     public function writeProgress(string $line, float $percent, ?array &$state = null): void
     {
@@ -67,15 +70,17 @@ final class Logger
         }
 
         if ($this->isTty) {
-            fwrite(STDOUT, "\r" . $line);
+            // \033[K — clear-to-end-of-line (на случай если предыдущая строка была длиннее)
+            fwrite(STDOUT, "\r\033[K" . $line);
+            fflush(STDOUT);
             return;
         }
 
-        // Не-TTY: показываем только при значительном изменении
         $state ??= ['lastPercent' => -10.0, 'lastTime' => 0];
         $now = time();
         if (($percent - $state['lastPercent']) >= 10.0 || ($now - $state['lastTime']) >= 30) {
             fwrite(STDOUT, $line . "\n");
+            fflush(STDOUT);
             $state['lastPercent'] = $percent;
             $state['lastTime']    = $now;
         }
@@ -86,6 +91,7 @@ final class Logger
     {
         if ($this->isTty && !$this->silent) {
             fwrite(STDOUT, "\n");
+            fflush(STDOUT);
         }
     }
 
@@ -128,6 +134,9 @@ final class Logger
             default => '',
         };
         fwrite($stream, $prefix . $message . "\n");
+        // Без явного flush строка может застрять в буфере stdout до конца скрипта,
+        // что особенно заметно перед долгими операциями (hash 8GB файла).
+        fflush($stream);
     }
 
     private static function detectTty(): bool
