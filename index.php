@@ -40,6 +40,12 @@ if (is_file($configPath)) {
     try {
         $cfg = Config::loadFromFile($configPath);
         foreach ($cfg->files as $entry) {
+            // Family и Discovery записи имеют динамическое локальное имя — в этих
+            // режимах "ожидаемое имя" определяется только в момент запуска update_iso.
+            // Пропускаем такие записи в проверке missing (иначе репортили бы false-positives).
+            if ($entry->isFamily() || $entry->isDiscovery()) {
+                continue;
+            }
             $expectedPath = $filesDir
                 . ($entry->localSubdir !== '' ? DIRECTORY_SEPARATOR . $entry->localSubdir : '')
                 . DIRECTORY_SEPARATOR . $entry->localName;

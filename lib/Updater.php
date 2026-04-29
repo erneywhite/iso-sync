@@ -70,6 +70,10 @@ final class Updater
     /** @return array<string,mixed> */
     private function processOne(IsoEntry $entry): array
     {
+        if ($entry->isDiscovery()) {
+            return $this->processDiscoveryEntry($entry);
+        }
+
         // 1. Чексуммы
         [$shaContent, $shaUrl] = $this->fetchChecksums($entry);
 
@@ -357,6 +361,147 @@ final class Updater
         }
 
         return $removed;
+    }
+
+    /**
+     * Discovery-режим: генерируем список папок по folder_enum, для каждой пробуем
+     * получить SHA256SUMS, существующие — обрабатываем как family с подставленным {folder}.
+     *
+     * @return array<string,mixed>
+     */
+    private function processDiscoveryEntry(IsoEntry $entry): array
+    {
+        $folders = self::generateFolders($entry->folderEnum ?? []);
+        $this->logger->info(sprintf(
+            'Discovery: проверим %d папок по шаблону %s',
+            count($folders), $entry->urlTemplate
+        ), ['event' => 'discovery_start', 'folders' => $folders]);
+
+        $subResults = [];
+        $skipped404 = [];
+
+        foreach ($folders as $folder) {
+            $folderUrl = rtrim(str_replace('{folder}', $folder, $entry->urlTemplate ?? ''), '/') . '/';
+
+            // Быстрая проверка существования: HEAD на первый файл из checksum_files
+            if (!$this->folderHasChecksums($entry, $folderUrl)) {
+                $skipped404[] = $folder;
+                $this->logger->info("Discovery: {$folder} — нет SHA256SUMS, пропуск", [
+                    'event'  => 'discovery_skip_404',
+                    'folder' => $folder,
+                    'url'    => $folderUrl,
+                ]);
+                continue;
+            }
+
+            $sub = $this->materializeFolderEntry($entry, $folder, $folderUrl);
+            $this->logger->info("Discovery: обрабатываем {$folder}", [
+                'event'  => 'discovery_process',
+                'folder' => $folder,
+            ]);
+            $subResults[$folder] = $this->processOne($sub);
+        }
+
+        return self::aggregateDiscoveryResults($folders, $skipped404, $subResults);
+    }
+
+    /**
+     * Проверяет наличие хотя бы одного SHA256SUMS-файла в папке через HEAD.
+     */
+    private function folderHasChecksums(IsoEntry $entry, string $folderUrl): bool
+    {
+        $names = $entry->checksumFiles ?? self::DEFAULT_CHECKSUM_FILES;
+        foreach ($names as $name) {
+            $head = $this->http->head($folderUrl . $name, $entry->insecureSsl);
+            if ($head !== null && $head['status'] >= 200 && $head['status'] < 300) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Создаёт синтетический IsoEntry для конкретной папки в discovery — с подставленным
+     * {folder} в url_dir, remote_pattern и local_name_template. Этот entry отрабатывает
+     * через обычный family-flow в processOne (т.к. urlTemplate=null, recursion невозможна).
+     */
+    private function materializeFolderEntry(IsoEntry $entry, string $folder, string $folderUrl): IsoEntry
+    {
+        return new IsoEntry(
+            localName:                    $entry->localName . '/' . $folder,
+            localSubdir:                  $entry->localSubdir,
+            urlDir:                       $folderUrl,
+            remoteName:                   '',
+            forceDownloadWithoutChecksum: $entry->forceDownloadWithoutChecksum,
+            skipIfUnchanged:              $entry->skipIfUnchanged,
+            insecureSsl:                  $entry->insecureSsl,
+            latestPattern:                $entry->latestPattern,
+            checksumFiles:                $entry->checksumFiles,
+            gpgSignatureUrl:              $entry->gpgSignatureUrl,
+            gpgKeyFingerprint:            $entry->gpgKeyFingerprint,
+            remotePattern:                str_replace('{folder}', preg_quote($folder, '/'), $entry->remotePattern ?? ''),
+            localNameTemplate:            str_replace('{folder}', $folder, $entry->localNameTemplate ?? ''),
+            cleanupOld:                   $entry->cleanupOld,
+            urlTemplate:                  null,
+            folderEnum:                   null,
+        );
+    }
+
+    /**
+     * Генерирует список имён папок из folder_enum.
+     * Пример: from=22, to=30, step=1, format="{0}.04" → ["22.04","23.04",...,"30.04"]
+     *
+     * @param array{from?:int,to?:int,step?:int,format?:string} $enum
+     * @return list<string>
+     */
+    public static function generateFolders(array $enum): array
+    {
+        $from   = (int)($enum['from']   ?? 0);
+        $to     = (int)($enum['to']     ?? 0);
+        $step   = (int)($enum['step']   ?? 1);
+        $format = (string)($enum['format'] ?? '{0}');
+
+        if ($step <= 0 || $from > $to) return [];
+
+        $folders = [];
+        for ($i = $from; $i <= $to; $i += $step) {
+            $folders[] = str_replace('{0}', (string)$i, $format);
+        }
+        return $folders;
+    }
+
+    /**
+     * Агрегирует под-результаты discovery в один статус.
+     * Приоритет: failed > updated > up_to_date > skipped.
+     *
+     * @param list<string> $folders
+     * @param list<string> $skipped404
+     * @param array<string,array<string,mixed>> $subResults
+     * @return array<string,mixed>
+     */
+    private static function aggregateDiscoveryResults(array $folders, array $skipped404, array $subResults): array
+    {
+        $statuses = array_map(fn($r) => (string)($r['status'] ?? ''), $subResults);
+
+        $aggStatus = 'skipped';
+        if (in_array('failed', $statuses, true)) {
+            $aggStatus = 'failed';
+        } elseif (in_array('updated', $statuses, true)) {
+            $aggStatus = 'updated';
+        } elseif (in_array('up_to_date', $statuses, true)) {
+            $aggStatus = 'up_to_date';
+        }
+
+        return [
+            'status'      => $aggStatus,
+            'message'     => sprintf(
+                'discovery: проверено %d, обработано %d, 404 %d',
+                count($folders), count($subResults), count($skipped404)
+            ),
+            'discovered'  => array_keys($subResults),
+            'skipped_404' => $skipped404,
+            'sub_results' => $subResults,
+        ];
     }
 
     public function localPathFor(IsoEntry $entry): string

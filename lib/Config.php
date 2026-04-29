@@ -8,26 +8,36 @@ use RuntimeException;
 /**
  * Описание одной записи из config/iso-list.json.
  *
- * Поддерживаются три режима выбора удалённого файла:
+ * Поддерживаются четыре режима выбора удалённого файла:
  *
- *   1. Фиксированный — `remote_name: "ubuntu-22.04.5-live-server-amd64.iso"`.
- *      Качаем именно это имя.
+ *   1. Fixed — `remote_name: "ubuntu-22.04.5-live-server-amd64.iso"`.
+ *      Качаем именно это имя из url_dir.
  *
- *   2. Легаси-`latest` — `remote_name: "latest"` + `latest_pattern: "/regex/"`.
- *      Среди файлов из SHA256SUMS, совпавших по regex'у, выбираем версионно-старший
+ *   2. Latest — `remote_name: "latest"` + `latest_pattern: "/regex/"`.
+ *      Среди файлов из SHA256SUMS, совпавших по regex, выбираем версионно-старший
  *      (strnatcasecmp). Локальное имя файла фиксированное (= ключ записи в JSON).
  *
  *   3. Family — `remote_pattern: "/regex/"` + `local_name_template: "Name_{1}.iso"`
- *      + опц. `cleanup_old: true`. Среди файлов в SHA256SUMS, совпавших по regex'у
- *      (regex должен иметь минимум одну capture group), выбираем версионно-старший,
- *      имя локального файла строим по шаблону, подставляя {1}, {2}, ... — capture
- *      groups. Если `cleanup_old: true`, после успешной загрузки удаляются братья
- *      в той же подпапке, чьё имя матчится под template-как-regex (но не равно
- *      текущему).
+ *      + опц. `cleanup_old: true`. Среди файлов в SHA256SUMS, совпавших по regex,
+ *      выбираем версионно-старший, имя локального файла строим по шаблону, подставляя
+ *      {1}, {2}, ... — capture groups. Если `cleanup_old: true`, после успешной
+ *      загрузки удаляются братья в той же подпапке, чьё имя матчится под template
+ *      (но не равно текущему).
+ *
+ *   4. Discovery — `url_template: "https://...{folder}/"` + `folder_enum: {...}`
+ *      + `remote_pattern` + `local_name_template`. Скрипт сам генерирует список
+ *      имён папок по диапазону (например 22.04..30.04 для Ubuntu LTS),
+ *      пробует скачать SHA256SUMS из каждой, и для каждой существующей запускает
+ *      family-обработку с подставленным {folder}. Используется когда упстрим
+ *      разносит версии по разным папкам и хочется подхватывать будущие релизы
+ *      без ручной правки конфига.
  */
 final class IsoEntry
 {
-    /** @param array<int,string>|null $checksumFiles */
+    /**
+     * @param array<int,string>|null $checksumFiles
+     * @param array{from:int,to:int,step:int,format:string}|null $folderEnum
+     */
     public function __construct(
         public readonly string $localName,
         public readonly string $localSubdir,
@@ -40,20 +50,29 @@ final class IsoEntry
         public readonly ?array $checksumFiles,
         public readonly ?string $gpgSignatureUrl,
         public readonly ?string $gpgKeyFingerprint,
-        // family mode
+        // family
         public readonly ?string $remotePattern,
         public readonly ?string $localNameTemplate,
         public readonly bool $cleanupOld,
+        // discovery
+        public readonly ?string $urlTemplate,
+        public readonly ?array $folderEnum,
     ) {}
+
+    public function isDiscovery(): bool
+    {
+        return $this->urlTemplate !== null;
+    }
 
     public function isFamily(): bool
     {
-        return $this->remotePattern !== null;
+        return !$this->isDiscovery() && $this->remotePattern !== null;
     }
 
     public function isLatest(): bool
     {
-        return !$this->isFamily() && ($this->remoteName === 'latest' || $this->remoteName === '');
+        return !$this->isDiscovery() && !$this->isFamily()
+            && ($this->remoteName === 'latest' || $this->remoteName === '');
     }
 }
 
@@ -108,25 +127,64 @@ final class Config
     /** @param array<string,mixed> $info */
     private static function parseEntry(string $localName, array $info): IsoEntry
     {
-        if (!isset($info['url_dir'])) {
-            throw new RuntimeException("Запись '{$localName}': обязательно поле 'url_dir'");
+        $hasName     = isset($info['remote_name']);
+        $hasPattern  = isset($info['remote_pattern']);
+        $hasTemplate = isset($info['url_template']);
+
+        // Определяем режим
+        $modes = (int)$hasName + (int)$hasPattern + (int)$hasTemplate;
+        if ($modes === 0) {
+            throw new RuntimeException(
+                "Запись '{$localName}': требуется один из ключей: 'remote_name' (fixed/latest), " .
+                "'remote_pattern' (family) или 'url_template' (discovery)"
+            );
+        }
+        if ($modes > 1) {
+            throw new RuntimeException(
+                "Запись '{$localName}': 'remote_name', 'remote_pattern' и 'url_template' взаимоисключающи"
+            );
         }
 
-        $hasRemoteName    = isset($info['remote_name']);
-        $hasRemotePattern = isset($info['remote_pattern']);
+        // === Discovery ===
+        $urlTemplate = null;
+        $folderEnum  = null;
+        if ($hasTemplate) {
+            $urlTemplate = (string)$info['url_template'];
+            if (!str_contains($urlTemplate, '{folder}')) {
+                throw new RuntimeException("Запись '{$localName}': 'url_template' должен содержать '{folder}' плейсхолдер");
+            }
+            if (!isset($info['folder_enum']) || !is_array($info['folder_enum'])) {
+                throw new RuntimeException("Запись '{$localName}': при 'url_template' обязателен объект 'folder_enum'");
+            }
+            $folderEnum = self::parseFolderEnum($localName, $info['folder_enum']);
 
-        if (!$hasRemoteName && !$hasRemotePattern) {
-            throw new RuntimeException("Запись '{$localName}': требуется либо 'remote_name', либо 'remote_pattern'");
-        }
-        if ($hasRemoteName && $hasRemotePattern) {
-            throw new RuntimeException("Запись '{$localName}': 'remote_name' и 'remote_pattern' взаимоисключающи");
+            if (!isset($info['remote_pattern'])) {
+                throw new RuntimeException("Запись '{$localName}': discovery-режим требует 'remote_pattern'");
+            }
+            if (!isset($info['local_name_template'])) {
+                throw new RuntimeException("Запись '{$localName}': discovery-режим требует 'local_name_template'");
+            }
+            // url_dir в discovery не нужен
+            if (isset($info['url_dir'])) {
+                throw new RuntimeException("Запись '{$localName}': в discovery не используется 'url_dir' (URL строится из 'url_template')");
+            }
+        } else {
+            // fixed/latest/family: url_dir обязателен
+            if (!isset($info['url_dir'])) {
+                throw new RuntimeException("Запись '{$localName}': обязательно поле 'url_dir'");
+            }
         }
 
-        $remotePattern    = null;
-        $localTemplate    = null;
-        if ($hasRemotePattern) {
+        // === Family / Discovery: общие поля remote_pattern + local_name_template ===
+        $remotePattern = null;
+        $localTemplate = null;
+        if ($hasPattern || $hasTemplate) {
             $remotePattern = (string)$info['remote_pattern'];
-            if (@preg_match($remotePattern, '') === false) {
+            // В discovery шаблон может содержать {folder} который не валидный regex до подстановки
+            $patternForValidation = $hasTemplate
+                ? str_replace('{folder}', 'placeholder', $remotePattern)
+                : $remotePattern;
+            if (@preg_match($patternForValidation, '') === false) {
                 throw new RuntimeException("Запись '{$localName}': невалидный regex в 'remote_pattern'");
             }
             if (!isset($info['local_name_template'])) {
@@ -140,8 +198,8 @@ final class Config
         return new IsoEntry(
             localName:                    $localName,
             localSubdir:                  (string)($info['local_subdir'] ?? ''),
-            urlDir:                       rtrim((string)$info['url_dir'], '/') . '/',
-            remoteName:                   $hasRemoteName ? (string)$info['remote_name'] : '',
+            urlDir:                       isset($info['url_dir']) ? rtrim((string)$info['url_dir'], '/') . '/' : '',
+            remoteName:                   $hasName ? (string)$info['remote_name'] : '',
             forceDownloadWithoutChecksum: (bool)($info['force_download_without_checksum'] ?? false),
             skipIfUnchanged:              (bool)($info['skip_if_unchanged'] ?? false),
             insecureSsl:                  (bool)($info['insecure_ssl'] ?? false),
@@ -154,6 +212,40 @@ final class Config
             remotePattern:                $remotePattern,
             localNameTemplate:            $localTemplate,
             cleanupOld:                   (bool)($info['cleanup_old'] ?? false),
+            urlTemplate:                  $urlTemplate,
+            folderEnum:                   $folderEnum,
         );
+    }
+
+    /**
+     * @param array<string,mixed> $info
+     * @return array{from:int,to:int,step:int,format:string}
+     */
+    private static function parseFolderEnum(string $localName, array $info): array
+    {
+        if (!isset($info['from'], $info['to'])) {
+            throw new RuntimeException("Запись '{$localName}': 'folder_enum' требует 'from' и 'to'");
+        }
+        $from = (int)$info['from'];
+        $to   = (int)$info['to'];
+        $step = isset($info['step']) ? (int)$info['step'] : 1;
+        $format = isset($info['format']) ? (string)$info['format'] : '{0}';
+
+        if ($step <= 0) {
+            throw new RuntimeException("Запись '{$localName}': 'folder_enum.step' должен быть > 0");
+        }
+        if ($from > $to) {
+            throw new RuntimeException("Запись '{$localName}': 'folder_enum.from' > 'folder_enum.to'");
+        }
+        if (!str_contains($format, '{0}')) {
+            throw new RuntimeException("Запись '{$localName}': 'folder_enum.format' должен содержать '{0}' плейсхолдер");
+        }
+
+        return [
+            'from'   => $from,
+            'to'     => $to,
+            'step'   => $step,
+            'format' => $format,
+        ];
     }
 }

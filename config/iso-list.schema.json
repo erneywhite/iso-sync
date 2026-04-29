@@ -10,7 +10,8 @@
             "additionalProperties": {
                 "oneOf": [
                     { "$ref": "#/definitions/fixed_or_latest" },
-                    { "$ref": "#/definitions/family" }
+                    { "$ref": "#/definitions/family" },
+                    { "$ref": "#/definitions/discovery" }
                 ]
             }
         }
@@ -106,6 +107,46 @@
                             "type": "boolean",
                             "default": false,
                             "description": "После успешной загрузки удалять файлы в той же подпапке, чьи имена матчатся под template (но не равны текущему). ВНИМАНИЕ: необратимо."
+                        }
+                    }
+                }
+            ]
+        },
+        "discovery": {
+            "description": "Discovery-режим: скрипт сам генерирует список папок по диапазону, пробует каждую и обрабатывает существующие как family с подставленным {folder}. Используется когда упстрим разносит мажорные версии по разным папкам и хочется будущие релизы без ручной правки.",
+            "allOf": [
+                { "$ref": "#/definitions/common" },
+                {
+                    "type": "object",
+                    "required": ["url_template", "folder_enum", "remote_pattern", "local_name_template"],
+                    "properties": {
+                        "url_template": {
+                            "type": "string",
+                            "description": "URL-шаблон с плейсхолдером {folder}. Пример: 'https://releases.ubuntu.com/{folder}/'"
+                        },
+                        "folder_enum": {
+                            "type": "object",
+                            "required": ["from", "to"],
+                            "description": "Параметры генерации списка папок: from..to с шагом step, формат format с плейсхолдером {0}",
+                            "properties": {
+                                "from":   { "type": "integer", "description": "Начало диапазона включительно (например, 22 для Ubuntu)" },
+                                "to":     { "type": "integer", "description": "Конец диапазона включительно (например, 30 — задел на будущее)" },
+                                "step":   { "type": "integer", "default": 1, "minimum": 1, "description": "Шаг (1 = все года, 2 = только чётные = LTS)" },
+                                "format": { "type": "string",  "default": "{0}", "description": "Формат имени папки, {0} — текущее значение. Пример: '{0}.04'" }
+                            }
+                        },
+                        "remote_pattern": {
+                            "type": "string",
+                            "description": "PCRE-regex по именам файлов в SHA256SUMS. {folder} подставляется (с экранированием) до применения. {1}/{2}/... — capture groups."
+                        },
+                        "local_name_template": {
+                            "type": "string",
+                            "description": "Шаблон локального имени. Поддерживает и {folder}, и {1}/{2}/... — {folder} подставляется первым."
+                        },
+                        "cleanup_old": {
+                            "type": "boolean",
+                            "default": false,
+                            "description": "Действует на уровне каждой обработанной папки family-режима."
                         }
                     }
                 }

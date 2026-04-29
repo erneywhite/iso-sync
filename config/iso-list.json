@@ -18,24 +18,13 @@
             "remote_name": "debian-13.1.0-amd64-DVD-1.iso"
         },
 
-        "_comment_ubuntu": "Для каждой LTS — фиксированная папка релиза, внутри ловим самый свежий point release (22.04.5 → 22.04.6 при обновлении). Локальное имя остаётся фиксированным (Ubuntu_22.04.iso).",
-        "Ubuntu_22.04.iso": {
-            "local_subdir":   "Ubuntu",
-            "url_dir":        "https://releases.ubuntu.com/22.04/",
-            "remote_name":    "latest",
-            "latest_pattern": "/^ubuntu-22\\.04(?:\\.\\d+)?-live-server-amd64\\.iso$/"
-        },
-        "Ubuntu_24.04.iso": {
-            "local_subdir":   "Ubuntu",
-            "url_dir":        "https://releases.ubuntu.com/24.04/",
-            "remote_name":    "latest",
-            "latest_pattern": "/^ubuntu-24\\.04(?:\\.\\d+)?-live-server-amd64\\.iso$/"
-        },
-        "Ubuntu_25.04.iso": {
-            "local_subdir":   "Ubuntu",
-            "url_dir":        "https://releases.ubuntu.com/25.04/",
-            "remote_name":    "latest",
-            "latest_pattern": "/^ubuntu-25\\.04(?:\\.\\d+)?-live-server-amd64\\.iso$/"
+        "_comment_ubuntu": "Discovery-режим: скрипт перебирает папки по диапазону 22.04..30.04, для каждой пробует SHA256SUMS, существующие обрабатывает как family. Когда выйдет 26.04 / 28.04 — подхватятся автоматом без правок конфига. step=1 включает интерим-релизы (.04 в нечётные годы); поставь step=2 чтобы тянуть только LTS.",
+        "ubuntu-lts": {
+            "local_subdir":        "Ubuntu",
+            "url_template":        "https://releases.ubuntu.com/{folder}/",
+            "folder_enum":         { "from": 22, "to": 30, "step": 1, "format": "{0}.04" },
+            "remote_pattern":      "/^ubuntu-{folder}(?:\\.\\d+)?-live-server-amd64\\.iso$/",
+            "local_name_template": "Ubuntu_{folder}.iso"
         },
 
         "CentOS_7.iso": {
