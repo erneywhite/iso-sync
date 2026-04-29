@@ -1,0 +1,31 @@
+# Все текстовые файлы хранятся в репе с LF и чекаутятся как LF независимо
+# от платформы и настроек core.autocrlf. Без этого Linux-серверы с панелями
+# (aaPanel/baota) ловят mismatch между blob'ом и working tree и git pull
+# жалуется на "local changes would be overwritten" хотя пользователь ничего
+# не трогал.
+* text=auto eol=lf
+
+# Бинарные файлы — git не должен пытаться нормализовать line endings
+*.ico binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.svg binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.tgz binary
+*.tar binary
+*.bz2 binary
+*.xz binary
+*.iso binary
+*.img binary
+*.bin binary
+*.exe binary
+*.msi binary
+*.deb binary
+*.rpm binary
+*.7z binary
+*.rar binary
