@@ -557,6 +557,19 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
   <symbol id="ic-hdd" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="12" x2="2" y2="12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
   <symbol id="ic-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></symbol>
   <symbol id="ic-term" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></symbol>
+
+  <!-- Иконки по типам файлов -->
+  <symbol id="ic-exe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polygon points="9.5 13 9.5 19 15 16" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="ic-archive" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="13" x2="14" y2="13"/></symbol>
+  <symbol id="ic-package" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></symbol>
+  <symbol id="ic-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></symbol>
+  <symbol id="ic-text" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></symbol>
+  <symbol id="ic-code" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></symbol>
+  <symbol id="ic-key" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3"/></symbol>
+  <symbol id="ic-doc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></symbol>
+  <symbol id="ic-vm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></symbol>
+  <symbol id="ic-audio" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></symbol>
+  <symbol id="ic-video" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></symbol>
 </svg>
 
     <div class="container">
@@ -672,7 +685,7 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
             title.textContent = `Отсутствующие файлы (${MISSING.length})`;
             MISSING.forEach(m => {
                 const row = document.createElement('div'); row.className = 'row';
-                const thumb = document.createElement('div'); thumb.className = 'thumb missing'; thumb.innerHTML = '<svg class="icon" aria-hidden="true"><use href="#ic-warn"></use></svg>';
+                const thumb = document.createElement('div'); thumb.className = 'thumb missing'; thumb.innerHTML = '<svg class="icon" width="24" height="24" aria-hidden="true"><use href="#ic-warn"></use></svg>';
                 const meta = document.createElement('div'); meta.className = 'meta';
                 const name = document.createElement('div'); name.className = 'filename'; name.textContent = m.name;
                 const sub = document.createElement('div'); sub.className = 'sub';
@@ -707,11 +720,31 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
             return {html: esc.replace(regex, '<mark>$1</mark>'), count};
         }
 
+        // Карта расширений на ID иконки. Чтобы добавить новый тип — допиши сюда расширение.
+        const FILE_ICON_MAP = {
+            'ic-iso':     ['iso','img','raw','dmg'],
+            'ic-vm':      ['vhd','vhdx','vmdk','qcow','qcow2','ova','ovf','vdi'],
+            'ic-exe':     ['exe','msi','msu','appx','msix','com','bat','cmd'],
+            'ic-archive': ['zip','7z','rar','tar','gz','tgz','bz2','tbz','xz','txz','zst','lz','lzma','arj','cab','wim'],
+            'ic-package': ['deb','rpm','apk','snap','flatpak','pkg','crx','xpi'],
+            'ic-image':   ['jpg','jpeg','png','gif','webp','svg','bmp','tiff','tif','ico','heic','avif'],
+            'ic-doc':     ['pdf','doc','docx','odt','rtf','epub','xls','xlsx','ods','ppt','pptx','odp'],
+            'ic-text':    ['txt','md','log','readme','license','changelog','nfo','csv','tsv'],
+            'ic-code':    ['php','js','mjs','cjs','ts','jsx','tsx','py','rb','go','rs','c','cpp','cc','h','hpp','cs','java','kt','swift','sh','bash','zsh','ps1','vbs','json','yaml','yml','xml','html','htm','css','scss','toml','ini','conf','cfg','sql'],
+            'ic-key':     ['sha256','sha1','sha512','md5','sig','asc','gpg','pem','crt','cer','key','pub','sign','sums'],
+            'ic-audio':   ['mp3','wav','flac','ogg','m4a','aac','opus','wma'],
+            'ic-video':   ['mp4','mkv','avi','mov','webm','wmv','flv','m4v'],
+        };
+        const _extToIcon = (() => {
+            const m = new Map();
+            for (const [icon, exts] of Object.entries(FILE_ICON_MAP)) {
+                for (const e of exts) m.set(e, icon);
+            }
+            return m;
+        })();
         function fileIcon(name, isDir){
-            if(isDir) return '<svg class="icon" aria-hidden="true"><use href="#ic-folder"></use></svg>';
-            const ext = (name.split('.').pop()||'').toLowerCase();
-            if(/(iso)/.test(ext)) return '<svg class="icon" aria-hidden="true"><use href="#ic-iso"></use></svg>';
-            return '<svg class="icon" aria-hidden="true"><use href="#ic-file"></use></svg>';
+            const id = isDir ? 'ic-folder' : (_extToIcon.get((name.split('.').pop()||'').toLowerCase()) || 'ic-file');
+            return `<svg class="icon" width="24" height="24" aria-hidden="true"><use href="#${id}"></use></svg>`;
         }
 
         function copyToClipboard(text){
