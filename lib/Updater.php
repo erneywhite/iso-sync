@@ -5,13 +5,15 @@ namespace IsoSync;
 
 /**
  * Главный оркестратор обновления ISO-образов.
- * Принимает Config, прогоняет каждую запись через единый алгоритм:
  *
+ * Алгоритм для каждой записи:
  *   1) скачать SHA256SUMS (если есть)
  *   2) опционально проверить GPG-подпись
- *   3) разрешить 'latest' в реальное имя файла (по версионной сортировке)
- *   4) сравнить локальный SHA256 с удалённым
- *   5) при необходимости скачать в .tmp, проверить Content-Length, переименовать
+ *   3) разрешить «какое имя качать» — fixed / latest / family
+ *      (см. IsoEntry для описания режимов)
+ *   4) сравнить локальный SHA256 с удалённым (с использованием кэша)
+ *   5) при необходимости скачать в .tmp, проверить Content-Length и хэш, переименовать
+ *   6) если family + cleanup_old — удалить старые версии в той же подпапке
  */
 final class Updater
 {
@@ -65,33 +67,17 @@ final class Updater
         return $summary;
     }
 
-    /** @return array{status:string, message:string, expected_size?:?int, actual_size?:?int} */
+    /** @return array<string,mixed> */
     private function processOne(IsoEntry $entry): array
     {
-        $localPath = $this->localPathFor($entry);
+        // 1. Чексуммы
+        [$shaContent, $shaUrl] = $this->fetchChecksums($entry);
 
-        if (file_exists($localPath) && !is_readable($localPath)) {
-            return ['status' => 'failed', 'message' => 'локальный файл нечитаем'];
-        }
-
-        // Скачать файл с чексуммами
-        $checksumNames = $entry->checksumFiles ?? self::DEFAULT_CHECKSUM_FILES;
-        $shaContent = null;
-        $shaUrl = null;
-        foreach ($checksumNames as $name) {
-            $tryUrl = $entry->urlDir . $name;
-            $this->logger->info("Пробуем чексуммы: {$tryUrl}", ['event' => 'checksum_try', 'url' => $tryUrl]);
-            $body = $this->http->getText($tryUrl, $entry->insecureSsl);
-            if ($body !== null) {
-                $shaContent = $body;
-                $shaUrl     = $tryUrl;
-                break;
-            }
-        }
-
-        // Чексуммы недоступны
         if ($shaContent === null) {
-            if ($entry->forceDownloadWithoutChecksum) {
+            // Без чексумм можно качать только в legacy/fixed режиме (не family)
+            // и только если разрешён force_download_without_checksum
+            if ($entry->forceDownloadWithoutChecksum && !$entry->isFamily()) {
+                $localPath = $this->localPathFor($entry);
                 return $this->downloadWithoutChecksum($entry, $localPath, 'чексуммы недоступны');
             }
             $msg = "не удалось скачать SHA256SUMS из {$entry->urlDir}";
@@ -99,7 +85,7 @@ final class Updater
             return ['status' => 'failed', 'message' => $msg];
         }
 
-        // Опциональная проверка GPG-подписи
+        // 2. Опциональная проверка GPG-подписи
         if ($entry->gpgSignatureUrl !== null) {
             $verdict = $this->gpg->verify($entry->gpgSignatureUrl, $shaContent, $entry->gpgKeyFingerprint, $entry->insecureSsl);
             if (!$verdict['ok']) {
@@ -110,35 +96,52 @@ final class Updater
         }
 
         $remoteHashes = ChecksumParser::parse($shaContent);
-        $remoteName   = $entry->remoteName;
 
-        // Разрешить 'latest' с версионной сортировкой
-        if ($entry->isLatest()) {
-            $resolved = $this->resolveLatest($remoteHashes, $entry->latestPattern);
-            if ($resolved === null) {
-                $msg = "не найден файл по шаблону {$entry->latestPattern} в {$shaUrl}";
-                $this->logger->warn($msg, ['event' => 'latest_not_found', 'file' => $entry->localName]);
+        // 3. Резолвим имя удалённого файла (fixed/latest/family)
+        $picked = $this->resolveRemote($entry, $remoteHashes);
+
+        if ($picked === null) {
+            // Family-режим без матчей — фейл (нет смысла в force_download без шаблона)
+            if ($entry->isFamily()) {
+                $msg = "ни одного файла в SHA256SUMS не совпало с {$entry->remotePattern}";
+                $this->logger->warn($msg, ['event' => 'family_no_match', 'file' => $entry->localName]);
                 return ['status' => 'failed', 'message' => $msg];
             }
-            $remoteName = $resolved;
-            $this->logger->info("'latest' разрешено в: {$remoteName}", ['event' => 'latest_resolved', 'file' => $entry->localName]);
-        }
-
-        // Нет записи о конкретном файле в SHA256SUMS
-        if (!isset($remoteHashes[$remoteName])) {
+            // legacy/fixed: нет записи о конкретном файле
             if ($entry->forceDownloadWithoutChecksum) {
-                return $this->downloadWithoutChecksum($entry, $localPath, "нет записи для {$remoteName} в чексуммах");
+                $localPath = $this->localPathFor($entry);
+                return $this->downloadWithoutChecksum($entry, $localPath, "нет записи для {$entry->remoteName} в чексуммах");
             }
-            $msg = "в SHA256SUMS нет записи для {$remoteName}";
-            $this->logger->warn($msg, ['event' => 'checksum_entry_missing', 'file' => $entry->localName]);
-            return ['status' => 'failed', 'message' => $msg];
+            $what = $entry->isLatest()
+                ? "не найден файл по шаблону {$entry->latestPattern} в {$shaUrl}"
+                : "в SHA256SUMS нет записи для {$entry->remoteName}";
+            $this->logger->warn($what, ['event' => 'resolve_failed', 'file' => $entry->localName]);
+            return ['status' => 'failed', 'message' => $what];
         }
 
-        // Сравнение хэшей
-        $remoteHash = strtolower($remoteHashes[$remoteName]);
+        $remoteName = $picked['name'];
+        $remoteHash = strtolower($picked['hash']);
 
-        // Если локальный файл есть и кэш-промах — hash_file пробежится по всему файлу.
-        // На 8 GB ISO это ~20-30 сек тишины. Предупредим пользователя, чтобы не казалось, что зависло.
+        // 4. Локальное имя — для family строим по шаблону, иначе берём ключ записи
+        $localName = $entry->isFamily()
+            ? FamilyResolver::applyTemplate($entry->localNameTemplate ?? '', $picked['matches'])
+            : $entry->localName;
+        $localPath = $this->localPathForName($entry, $localName);
+
+        if ($entry->isFamily() || $entry->isLatest()) {
+            $this->logger->info("Разрешено: {$remoteName} → локально {$localName}", [
+                'event'  => 'resolved',
+                'file'   => $entry->localName,
+                'remote' => $remoteName,
+                'local'  => $localName,
+            ]);
+        }
+
+        if (file_exists($localPath) && !is_readable($localPath)) {
+            return ['status' => 'failed', 'message' => "локальный файл нечитаем: {$localPath}"];
+        }
+
+        // 5. Сравнение хэшей (с кэшем)
         $localHash = null;
         if (file_exists($localPath)) {
             $cached = $this->hashCache->get($localPath);
@@ -163,18 +166,72 @@ final class Updater
         ), ['event' => 'hash_compare', 'file' => $entry->localName]);
 
         if ($localHex !== null && hash_equals($remoteHash, $localHex)) {
-            return ['status' => 'up_to_date', 'message' => 'хэши совпадают'];
+            return ['status' => 'up_to_date', 'message' => 'хэши совпадают', 'local_name' => $localName];
         }
 
-        // Загрузка
-        return $this->doDownload(
-            $entry,
-            $entry->urlDir . $remoteName,
-            $localPath,
-            expectedHash: $remoteHash
-        );
+        // 6. Загрузка
+        $result = $this->doDownload($entry, $entry->urlDir . $remoteName, $localPath, $remoteHash);
+        $result['local_name'] = $localName;
+
+        // 7. Cleanup старых версий — только для family и только если успешно обновили
+        if ($result['status'] === 'updated' && $entry->isFamily() && $entry->cleanupOld) {
+            $removed = $this->cleanupOldSiblings($entry, $localName);
+            if ($removed !== []) {
+                $result['removed_siblings'] = $removed;
+            }
+        }
+
+        return $result;
     }
 
+    /**
+     * Обходит DEFAULT_CHECKSUM_FILES (или entry->checksumFiles) и возвращает первое
+     * успешно скачанное содержимое плюс URL.
+     *
+     * @return array{0:?string,1:?string}
+     */
+    private function fetchChecksums(IsoEntry $entry): array
+    {
+        $checksumNames = $entry->checksumFiles ?? self::DEFAULT_CHECKSUM_FILES;
+        foreach ($checksumNames as $name) {
+            $tryUrl = $entry->urlDir . $name;
+            $this->logger->info("Пробуем чексуммы: {$tryUrl}", ['event' => 'checksum_try', 'url' => $tryUrl]);
+            $body = $this->http->getText($tryUrl, $entry->insecureSsl);
+            if ($body !== null) {
+                return [$body, $tryUrl];
+            }
+        }
+        return [null, null];
+    }
+
+    /**
+     * Резолвит имя удалённого файла с учётом режима (family / latest / fixed).
+     *
+     * @param array<string,string> $remoteHashes
+     * @return array{name:string,hash:string,matches:array<int,string>}|null
+     */
+    private function resolveRemote(IsoEntry $entry, array $remoteHashes): ?array
+    {
+        if ($entry->isFamily()) {
+            return FamilyResolver::pickHighest($remoteHashes, $entry->remotePattern ?? '');
+        }
+
+        if ($entry->isLatest()) {
+            return FamilyResolver::pickHighest($remoteHashes, $entry->latestPattern);
+        }
+
+        // fixed name
+        if (!isset($remoteHashes[$entry->remoteName])) {
+            return null;
+        }
+        return [
+            'name'    => $entry->remoteName,
+            'hash'    => $remoteHashes[$entry->remoteName],
+            'matches' => [$entry->remoteName],
+        ];
+    }
+
+    /** @return array<string,mixed> */
     private function downloadWithoutChecksum(IsoEntry $entry, string $localPath, string $reasonMsg): array
     {
         $this->logger->warn("Скачиваем без проверки хэша ({$reasonMsg}): {$entry->localName}", [
@@ -182,14 +239,12 @@ final class Updater
             'file'   => $entry->localName,
             'reason' => $reasonMsg,
         ]);
-        return $this->doDownload(
-            $entry,
-            $entry->urlDir . $entry->remoteName,
-            $localPath,
-            expectedHash: null
-        );
+        $result = $this->doDownload($entry, $entry->urlDir . $entry->remoteName, $localPath, null);
+        $result['local_name'] = $entry->localName;
+        return $result;
     }
 
+    /** @return array<string,mixed> */
     private function doDownload(IsoEntry $entry, string $url, string $localPath, ?string $expectedHash): array
     {
         $tmp = $localPath . '.tmp';
@@ -222,7 +277,7 @@ final class Updater
             return ['status' => 'skipped', 'message' => 'remote не изменился'];
         }
 
-        // Если есть ожидаемый хэш — пере-проверяем после загрузки (доверяй, но проверяй)
+        // Перепроверка SHA256 после загрузки
         if ($expectedHash !== null) {
             $size = (int)@filesize($tmp);
             $this->logger->info(sprintf(
@@ -247,13 +302,14 @@ final class Updater
             return ['status' => 'failed', 'message' => $msg];
         }
 
-        // Обновим кэш сразу — пригодится index.php и следующему запуску
+        // Обновим кэш сразу
         $this->hashCache->forget($localPath);
         $this->hashCache->getOrCompute($localPath);
 
-        $this->logger->info("Файл обновлён: {$entry->localName}", [
+        $this->logger->info("Файл обновлён: " . basename($localPath), [
             'event'        => 'file_updated',
             'file'         => $entry->localName,
+            'local_path'   => $localPath,
             'actual_size'  => $result['actual_size'],
         ]);
 
@@ -266,31 +322,53 @@ final class Updater
     }
 
     /**
-     * Среди ключей $remoteHashes отбирает совпадающие по PCRE-шаблону
-     * и возвращает версионно-старший (через strnatcasecmp).
+     * Удаляет файлы в той же подпапке, чьё имя матчится с template-как-regex,
+     * но НЕ равно $currentLocalName и не оканчивается на `.tmp`.
      *
-     * @param array<string,string> $remoteHashes
+     * @return list<string> имена удалённых файлов
      */
-    private function resolveLatest(array $remoteHashes, string $pattern): ?string
+    private function cleanupOldSiblings(IsoEntry $entry, string $currentLocalName): array
     {
-        $candidates = [];
-        foreach (array_keys($remoteHashes) as $name) {
-            if (@preg_match($pattern, $name) === 1) {
-                $candidates[] = $name;
+        if ($entry->localNameTemplate === null) return [];
+
+        $dir = $this->localDir
+            . ($entry->localSubdir !== '' ? DIRECTORY_SEPARATOR . $entry->localSubdir : '');
+        if (!is_dir($dir)) return [];
+
+        $siblingPattern = FamilyResolver::templateToRegex($entry->localNameTemplate);
+        $removed = [];
+
+        foreach (scandir($dir) ?: [] as $name) {
+            if ($name === '.' || $name === '..' || $name === $currentLocalName) continue;
+            if (str_ends_with($name, '.tmp')) continue;
+
+            if (preg_match($siblingPattern, $name) === 1) {
+                $path = $dir . DIRECTORY_SEPARATOR . $name;
+                if (is_file($path) && @unlink($path)) {
+                    $this->hashCache->forget($path);
+                    $removed[] = $name;
+                    $this->logger->info("Удалена предыдущая версия: {$name}", [
+                        'event'   => 'cleanup_old',
+                        'family'  => $entry->localName,
+                        'removed' => $name,
+                    ]);
+                }
             }
         }
-        if ($candidates === []) return null;
 
-        // strnatcasecmp хорошо работает с именами вроде CentOS-Stream-9-20240219.0-...iso
-        usort($candidates, 'strnatcasecmp');
-        return end($candidates) ?: null;
+        return $removed;
     }
 
     public function localPathFor(IsoEntry $entry): string
     {
+        return $this->localPathForName($entry, $entry->localName);
+    }
+
+    private function localPathForName(IsoEntry $entry, string $name): string
+    {
         return $this->localDir
             . ($entry->localSubdir !== '' ? DIRECTORY_SEPARATOR . $entry->localSubdir : '')
-            . DIRECTORY_SEPARATOR . $entry->localName;
+            . DIRECTORY_SEPARATOR . $name;
     }
 
     private static function humanSize(int $bytes): string

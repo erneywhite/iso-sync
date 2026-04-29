@@ -17,21 +17,27 @@
             "url_dir": "https://cdimage.debian.org/cdimage/archive/13.1.0/amd64/iso-dvd/",
             "remote_name": "debian-13.1.0-amd64-DVD-1.iso"
         },
+
+        "_comment_ubuntu": "Для каждой LTS — фиксированная папка релиза, внутри ловим самый свежий point release (22.04.5 → 22.04.6 при обновлении). Локальное имя остаётся фиксированным (Ubuntu_22.04.iso).",
         "Ubuntu_22.04.iso": {
-            "local_subdir": "Ubuntu",
-            "url_dir": "https://releases.ubuntu.com/22.04/",
-            "remote_name": "ubuntu-22.04.5-live-server-amd64.iso"
+            "local_subdir":   "Ubuntu",
+            "url_dir":        "https://releases.ubuntu.com/22.04/",
+            "remote_name":    "latest",
+            "latest_pattern": "/^ubuntu-22\\.04(?:\\.\\d+)?-live-server-amd64\\.iso$/"
         },
         "Ubuntu_24.04.iso": {
-            "local_subdir": "Ubuntu",
-            "url_dir": "https://releases.ubuntu.com/24.04/",
-            "remote_name": "ubuntu-24.04.3-live-server-amd64.iso"
+            "local_subdir":   "Ubuntu",
+            "url_dir":        "https://releases.ubuntu.com/24.04/",
+            "remote_name":    "latest",
+            "latest_pattern": "/^ubuntu-24\\.04(?:\\.\\d+)?-live-server-amd64\\.iso$/"
         },
         "Ubuntu_25.04.iso": {
-            "local_subdir": "Ubuntu",
-            "url_dir": "https://releases.ubuntu.com/25.04/",
-            "remote_name": "ubuntu-25.04-live-server-amd64.iso"
+            "local_subdir":   "Ubuntu",
+            "url_dir":        "https://releases.ubuntu.com/25.04/",
+            "remote_name":    "latest",
+            "latest_pattern": "/^ubuntu-25\\.04(?:\\.\\d+)?-live-server-amd64\\.iso$/"
         },
+
         "CentOS_7.iso": {
             "local_subdir": "CentOS",
             "url_dir": "https://mirror.yandex.ru/centos/centos/7/isos/x86_64/",
@@ -50,6 +56,7 @@
             "remote_name": "latest",
             "latest_pattern": "/dvd/i"
         },
+
         "AlmaLinux_8.iso": {
             "local_subdir": "AlmaLinux",
             "url_dir": "https://raw.repo.almalinux.org/almalinux/8/isos/x86_64/",
@@ -65,31 +72,44 @@
             "url_dir": "https://raw.repo.almalinux.org/almalinux/10/isos/x86_64/",
             "remote_name": "AlmaLinux-10-latest-x86_64-dvd.iso"
         },
-        "ProxmoxVE_7.4.iso": {
-            "local_subdir": "Proxmox",
-            "url_dir": "https://enterprise.proxmox.com/iso/",
-            "remote_name": "proxmox-ve_7.4-1.iso"
+
+        "_comment_proxmox": "Family-режим: одна запись = одно семейство (мажорная ветка). regex захватывает версию, локальное имя строится по шаблону, при выходе новой версии старая удаляется.",
+        "proxmox-ve-7": {
+            "local_subdir":        "Proxmox",
+            "url_dir":             "https://enterprise.proxmox.com/iso/",
+            "remote_pattern":      "/^proxmox-ve_7\\.(\\d+)-\\d+\\.iso$/",
+            "local_name_template": "ProxmoxVE_7.{1}.iso",
+            "cleanup_old":         true
         },
-        "ProxmoxVE_8.4.iso": {
-            "local_subdir": "Proxmox",
-            "url_dir": "https://enterprise.proxmox.com/iso/",
-            "remote_name": "proxmox-ve_8.4-1.iso"
+        "proxmox-ve-8": {
+            "local_subdir":        "Proxmox",
+            "url_dir":             "https://enterprise.proxmox.com/iso/",
+            "remote_pattern":      "/^proxmox-ve_8\\.(\\d+)-\\d+\\.iso$/",
+            "local_name_template": "ProxmoxVE_8.{1}.iso",
+            "cleanup_old":         true
         },
-        "ProxmoxVE_9.1.iso": {
-            "local_subdir": "Proxmox",
-            "url_dir": "https://enterprise.proxmox.com/iso/",
-            "remote_name": "proxmox-ve_9.1-1.iso"
+        "proxmox-ve-9": {
+            "local_subdir":        "Proxmox",
+            "url_dir":             "https://enterprise.proxmox.com/iso/",
+            "remote_pattern":      "/^proxmox-ve_9\\.(\\d+)-\\d+\\.iso$/",
+            "local_name_template": "ProxmoxVE_9.{1}.iso",
+            "cleanup_old":         true
         },
-        "Proxmox_BackUP_4.0.iso": {
-            "local_subdir": "Proxmox",
-            "url_dir": "https://enterprise.proxmox.com/iso/",
-            "remote_name": "proxmox-backup-server_4.0-1.iso"
+        "proxmox-backup-4": {
+            "local_subdir":        "Proxmox",
+            "url_dir":             "https://enterprise.proxmox.com/iso/",
+            "remote_pattern":      "/^proxmox-backup-server_4\\.(\\d+)-\\d+\\.iso$/",
+            "local_name_template": "Proxmox_BackUP_4.{1}.iso",
+            "cleanup_old":         true
         },
-        "Proxmox_MailGateway_7.3.iso": {
-            "local_subdir": "Proxmox",
-            "url_dir": "https://enterprise.proxmox.com/iso/",
-            "remote_name": "proxmox-mailgateway_7.3-1.iso"
+        "proxmox-mail-7": {
+            "local_subdir":        "Proxmox",
+            "url_dir":             "https://enterprise.proxmox.com/iso/",
+            "remote_pattern":      "/^proxmox-mailgateway_7\\.(\\d+)-\\d+\\.iso$/",
+            "local_name_template": "Proxmox_MailGateway_7.{1}.iso",
+            "cleanup_old":         true
         },
+
         "QEMU_virtio-win-latest.iso": {
             "local_subdir": "Windows",
             "url_dir": "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/",

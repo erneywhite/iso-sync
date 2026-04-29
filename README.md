@@ -34,7 +34,10 @@
 - Скачивание актуальной версии при несовпадении хэшей
 - **Проверка `Content-Length`** — после загрузки сравнивает фактический размер с заголовком HEAD
 - **Пере-проверка хэша после загрузки** — даже если зеркало вернуло «успех», файл проверяется ещё раз
-- Поддержка `latest` — автоопределение актуального имени с **версионной сортировкой** (strnatcasecmp)
+- **Три режима выбора версии**:
+  - `fixed` — точное имя файла на сервере (Debian, AlmaLinux)
+  - `latest` — внутри папки автоматом ловится свежий point release (Ubuntu LTS, CentOS Stream)
+  - `family` — захватывает всё семейство версий, локальный файл переименовывается под текущую (Proxmox), старые версии удаляются
 - Гибкий шаблон поиска `latest_pattern` для каждой записи
 - Флаг `force_download_without_checksum` для файлов без официальных контрольных сумм (VirtIO и др.)
 - Флаг `skip_if_unchanged` — для force-загрузок: пропускать, если remote не изменился по `Last-Modified`
@@ -66,6 +69,7 @@ iso-sync/
 │   ├── Http.php
 │   ├── Downloader.php
 │   ├── GpgVerifier.php
+│   ├── FamilyResolver.php    # шаблоны имён + версионная сортировка для family-режима
 │   └── Updater.php
 ├── tests/                    # Минимальный test-runner без composer/PHPUnit
 │   ├── run.php
@@ -171,60 +175,79 @@ php update_iso.php
 
 ## Конфигурация
 
-Список образов хранится в [`config/iso-list.json`](config/iso-list.json). Структура:
+Список образов хранится в [`config/iso-list.json`](config/iso-list.json). Поддерживаются три режима выбора версии:
+
+### Режим 1: `fixed` — точное имя
+
+Когда нужен конкретный файл по имени:
 
 ```jsonc
-{
-    "files": {
-        "Debian_12.iso": {
-            "local_subdir": "Debian",
-            "url_dir":      "https://cdimage.debian.org/cdimage/archive/12.12.0/amd64/iso-dvd/",
-            "remote_name":  "debian-12.12.0-amd64-DVD-1.iso"
-        },
-
-        "CentOS_9.iso": {
-            "local_subdir":   "CentOS",
-            "url_dir":        "https://ftp.byfly.by/pub/centos-stream/9-stream/BaseOS/x86_64/iso/",
-            "remote_name":    "latest",
-            "latest_pattern": "/dvd/i"
-        },
-
-        "QEMU_virtio-win-latest.iso": {
-            "local_subdir":                    "Windows",
-            "url_dir":                         "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/",
-            "remote_name":                     "virtio-win.iso",
-            "force_download_without_checksum": true,
-            "skip_if_unchanged":               true
-        },
-
-        "SomeISO.iso": {
-            "local_subdir": "Debian",
-            "url_dir":      "https://example.com/iso/",
-            "remote_name":  "some.iso",
-            "insecure_ssl": true,
-            "gpg": {
-                "signature_url":   "https://example.com/iso/SHA256SUMS.gpg",
-                "key_fingerprint": "AAAA1111BBBB2222CCCC3333DDDD4444EEEE5555"
-            }
-        }
-    }
+"Debian_12.iso": {
+    "local_subdir": "Debian",
+    "url_dir":      "https://cdimage.debian.org/cdimage/archive/12.12.0/amd64/iso-dvd/",
+    "remote_name":  "debian-12.12.0-amd64-DVD-1.iso"
 }
 ```
 
-### Поля
+### Режим 2: `latest` — фиксированное локальное имя, авто-выбор внутри папки
 
-| Поле | Тип | По умолчанию | Описание |
-|------|-----|-------------|----------|
-| `local_subdir` | string | `""` | Подпапка внутри `files/` |
-| `url_dir` | string | — | Базовый URL директории (со слешем в конце) |
-| `remote_name` | string | — | Имя файла на удалённом сервере, либо `latest` |
-| `latest_pattern` | string (regex) | `"/dvd/i"` | PCRE-шаблон поиска при `remote_name: "latest"`; среди совпадений выбирается версионно-старший |
-| `checksum_files` | string[] | `["SHA256SUMS","SHA256SUM","sha256sum.txt","sha256sums.txt","CHECKSUM"]` | Имена чексумм-файлов для пробы |
-| `force_download_without_checksum` | bool | `false` | Качать, даже если SHA256SUMS не найден или нет записи об этом файле |
-| `skip_if_unchanged` | bool | `false` | Для force-загрузок: пропустить, если HEAD говорит, что remote не менялся (по `Last-Modified`) |
-| `insecure_ssl` | bool | `false` | Отключить проверку SSL для конкретного зеркала (точечный опт-аут) |
-| `gpg.signature_url` | string | — | URL подписи для `SHA256SUMS` |
-| `gpg.key_fingerprint` | string | — | Ожидаемый fingerprint ключа (40 hex). Сам ключ должен быть импортирован в `gpg` |
+Когда внутри одного URL зеркала точечная версия меняется (Ubuntu 22.04.5 → 22.04.6, CentOS Stream snapshots), но локальный файл всегда хочется называть одинаково:
+
+```jsonc
+"Ubuntu_22.04.iso": {
+    "local_subdir":   "Ubuntu",
+    "url_dir":        "https://releases.ubuntu.com/22.04/",
+    "remote_name":    "latest",
+    "latest_pattern": "/^ubuntu-22\\.04(?:\\.\\d+)?-live-server-amd64\\.iso$/"
+}
+```
+
+Среди файлов в `SHA256SUMS`, совпадающих с `latest_pattern`, выбирается версионно-старший по `strnatcasecmp`. Локальный файл всегда сохраняется как `Ubuntu_22.04.iso`.
+
+### Режим 3: `family` — динамическое имя по шаблону + cleanup старых
+
+Когда упстрим публикует целую серию версий в одной папке (`proxmox-backup-server_4.0-1.iso`, `4.1-1.iso`, `4.2-1.iso`...) и хочется автоматически держать локально только самую свежую с версией в имени:
+
+```jsonc
+"proxmox-backup-4": {
+    "local_subdir":        "Proxmox",
+    "url_dir":             "https://enterprise.proxmox.com/iso/",
+    "remote_pattern":      "/^proxmox-backup-server_4\\.(\\d+)-\\d+\\.iso$/",
+    "local_name_template": "Proxmox_BackUP_4.{1}.iso",
+    "cleanup_old":         true
+}
+```
+
+Что произойдёт:
+
+1. В `SHA256SUMS` найдены `proxmox-backup-server_4.0-1.iso`, `4.1-1.iso`, `4.2-1.iso`
+2. Среди них старший — `4.2-1.iso` → captures: `[1] = "2"`
+3. Локальное имя: `Proxmox_BackUP_4.{1}.iso` → `Proxmox_BackUP_4.2.iso`
+4. После успешной загрузки старые `Proxmox_BackUP_4.0.iso`, `Proxmox_BackUP_4.1.iso` удаляются (т.к. `cleanup_old: true`)
+
+JSON-ключ записи (`proxmox-backup-4`) — произвольный идентификатор семейства, не используется как имя файла.
+
+### Все поля
+
+| Поле | Режим | По умолчанию | Описание |
+|------|-------|-------------|----------|
+| `local_subdir` | все | `""` | Подпапка внутри `files/` |
+| `url_dir` | все | — | Базовый URL директории (со слешем в конце) |
+| `remote_name` | fixed/latest | — | Имя файла на удалённом сервере, либо `latest` |
+| `latest_pattern` | latest | `"/dvd/i"` | PCRE-regex поиска при `remote_name: "latest"`; среди совпадений выбирается версионно-старший |
+| `remote_pattern` | family | — | PCRE-regex с минимум одной capture group по именам в SHA256SUMS |
+| `local_name_template` | family | — | Шаблон локального имени, `{1}`/`{2}`/... подставляются capture groups |
+| `cleanup_old` | family | `false` | Удалять старые версии в той же подпапке после успешной загрузки. **Необратимо.** |
+| `checksum_files` | все | `["SHA256SUMS","SHA256SUM","sha256sum.txt","sha256sums.txt","CHECKSUM"]` | Имена чексумм-файлов для пробы |
+| `force_download_without_checksum` | fixed/latest | `false` | Качать, даже если SHA256SUMS не найден или нет записи об этом файле |
+| `skip_if_unchanged` | все | `false` | Для force-загрузок: пропустить, если HEAD говорит, что remote не менялся (по `Last-Modified`) |
+| `insecure_ssl` | все | `false` | Отключить проверку SSL для конкретного зеркала (точечный опт-аут) |
+| `gpg.signature_url` | все | — | URL подписи для `SHA256SUMS` |
+| `gpg.key_fingerprint` | все | — | Ожидаемый fingerprint ключа (40 hex). Сам ключ должен быть импортирован в `gpg` |
+
+> Ключи, начинающиеся с `_` (например `"_comment_proxmox": "..."`) парсер игнорирует — удобно для inline-комментариев в JSON.
+
+> `remote_name` и `remote_pattern` **взаимоисключающие**: либо одно, либо другое.
 
 См. также [`config/iso-list.schema.json`](config/iso-list.schema.json) — JSON Schema для валидации и автодополнения в IDE.
 
@@ -236,17 +259,26 @@ php update_iso.php
 
 ```
 1. Скачать SHA256SUMS / SHA256SUM / CHECKSUM (по списку checksum_files)
-   ├─ Не найдены и force_download_without_checksum=true
-   │   └─ Загрузка без проверки хэша
+   ├─ Не найдены
+   │   ├─ force_download_without_checksum=true и режим fixed/latest
+   │   │   └─ Загрузка без проверки хэша
+   │   └─ Иначе → failed
    └─ Найдены
        ├─ (опционально) проверить GPG-подпись SHA256SUMS
-       ├─ remote_name = 'latest' → найти кандидатов по latest_pattern,
-       │                            отсортировать через strnatcasecmp, взять старший
-       └─ Сравнение хэшей
-           ├─ Совпадают → файл актуален, пропуск
-           └─ Не совпадают → загрузка в .tmp
+       └─ Резолв имени удалённого файла:
+           ├─ family    → среди совпавших с remote_pattern взять версионно-старший
+           ├─           ├─ имя локального файла = local_name_template с {1},{2},...
+           ├─ latest    → среди совпавших с latest_pattern взять версионно-старший
+           ├─           ├─ имя локального файла = ключ JSON-записи
+           └─ fixed     → точное имя из remote_name
+                         ├─ имя локального файла = ключ JSON-записи
 
-2. Загрузка:
+2. Сравнение хэшей:
+   - SHA256 локального файла (из кэша по mtime+size, иначе hash_file())
+   - Совпали → up_to_date, выходим
+   - Иначе → переходим к загрузке
+
+3. Загрузка:
    - HEAD-запрос → ожидаемый Content-Length и Last-Modified
    - При skip_if_unchanged=true и неизменном remote — пропуск
    - До 5 попыток, прерывание при 60 сек без прогресса
@@ -255,9 +287,12 @@ php update_iso.php
    - rename(.tmp, финальный файл) — атомарно
    - Кэш SHA256 обновляется сразу
 
-3. Запуск generate_all_hashes.php — пересчёт по всем файлам и чистка осиротевшего кэша
+4. Family + cleanup_old + успешный update → удаление старых версий в той же подпапке,
+   чьи имена матчатся с template-как-regex (но не равно текущему).
 
-4. Запись logs/last_run.json со сводкой
+5. Запуск generate_all_hashes.php — пересчёт по всем файлам и чистка осиротевшего кэша.
+
+6. Запись logs/last_run.json со сводкой.
 ```
 
 ---

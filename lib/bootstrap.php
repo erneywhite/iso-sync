@@ -14,4 +14,5 @@ require_once __DIR__ . '/Lock.php';
 require_once __DIR__ . '/Http.php';
 require_once __DIR__ . '/GpgVerifier.php';
 require_once __DIR__ . '/Downloader.php';
+require_once __DIR__ . '/FamilyResolver.php';
 require_once __DIR__ . '/Updater.php';

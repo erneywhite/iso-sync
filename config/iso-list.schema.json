@@ -6,66 +6,110 @@
     "properties": {
         "files": {
             "type": "object",
-            "description": "Карта: имя локального файла -> описание источника",
+            "description": "Карта: ID записи -> описание. ID — это либо имя локального файла (для fixed/latest режимов), либо произвольный идентификатор семейства (для family). Ключи, начинающиеся с '_', парсер игнорирует — удобно для комментариев.",
             "additionalProperties": {
-                "type": "object",
-                "required": ["url_dir", "remote_name"],
-                "properties": {
-                    "local_subdir": {
-                        "type": "string",
-                        "description": "Подпапка внутри files/ для хранения"
-                    },
-                    "url_dir": {
-                        "type": "string",
-                        "format": "uri",
-                        "description": "Базовый URL директории на удалённом сервере (со слешем в конце)"
-                    },
-                    "remote_name": {
-                        "type": "string",
-                        "description": "Имя файла на удалённом сервере. 'latest' = автопоиск по latest_pattern"
-                    },
-                    "force_download_without_checksum": {
-                        "type": "boolean",
-                        "default": false,
-                        "description": "Качать файл, даже если SHA256SUMS не найден или нет записи о нём"
-                    },
-                    "skip_if_unchanged": {
-                        "type": "boolean",
-                        "default": false,
-                        "description": "Для force-загрузок: пропускать, если HEAD говорит что файл не изменился (по Content-Length и Last-Modified)"
-                    },
-                    "insecure_ssl": {
-                        "type": "boolean",
-                        "default": false,
-                        "description": "Отключить проверку SSL для проблемных зеркал. По умолчанию проверяется."
-                    },
-                    "latest_pattern": {
-                        "type": "string",
-                        "default": "/dvd/i",
-                        "description": "PCRE-регэксп для поиска файла по 'latest'. Из совпадений выбирается версионно-старший."
-                    },
-                    "checksum_files": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Переопределить дефолтный список имён файлов с чексуммами для пробы"
-                    },
-                    "gpg": {
-                        "type": "object",
-                        "description": "Опциональная проверка GPG-подписи на SHA256SUMS",
-                        "properties": {
-                            "signature_url": {
-                                "type": "string",
-                                "format": "uri",
-                                "description": "URL подписи (обычно SHA256SUMS.gpg или .sign)"
-                            },
-                            "key_fingerprint": {
-                                "type": "string",
-                                "description": "Отпечаток ключа (для проверки доверия). Ключ должен быть импортирован в системный gpg keyring."
-                            }
+                "oneOf": [
+                    { "$ref": "#/definitions/fixed_or_latest" },
+                    { "$ref": "#/definitions/family" }
+                ]
+            }
+        }
+    },
+    "definitions": {
+        "common": {
+            "type": "object",
+            "properties": {
+                "local_subdir": {
+                    "type": "string",
+                    "description": "Подпапка внутри files/ для хранения"
+                },
+                "url_dir": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Базовый URL директории на удалённом сервере (со слешем в конце)"
+                },
+                "force_download_without_checksum": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Качать файл, даже если SHA256SUMS не найден или нет записи о нём (только для fixed/latest)"
+                },
+                "skip_if_unchanged": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Для force-загрузок: пропускать, если HEAD говорит что файл не изменился (Content-Length и Last-Modified)"
+                },
+                "insecure_ssl": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Отключить проверку SSL для проблемных зеркал. По умолчанию проверяется."
+                },
+                "checksum_files": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Переопределить дефолтный список имён файлов с чексуммами для пробы"
+                },
+                "gpg": {
+                    "type": "object",
+                    "description": "Опциональная проверка GPG-подписи на SHA256SUMS",
+                    "properties": {
+                        "signature_url": {
+                            "type": "string",
+                            "format": "uri",
+                            "description": "URL подписи (обычно SHA256SUMS.gpg или .sign)"
+                        },
+                        "key_fingerprint": {
+                            "type": "string",
+                            "description": "Отпечаток ключа (для проверки доверия). Ключ должен быть импортирован в системный gpg keyring."
                         }
                     }
                 }
             }
+        },
+        "fixed_or_latest": {
+            "description": "Fixed-name или legacy-latest режим. Локальное имя файла = ключ записи в JSON.",
+            "allOf": [
+                { "$ref": "#/definitions/common" },
+                {
+                    "type": "object",
+                    "required": ["url_dir", "remote_name"],
+                    "properties": {
+                        "remote_name": {
+                            "type": "string",
+                            "description": "Имя файла на удалённом сервере. 'latest' или '' = автопоиск по latest_pattern (выбираем версионно-старший по strnatcasecmp)"
+                        },
+                        "latest_pattern": {
+                            "type": "string",
+                            "default": "/dvd/i",
+                            "description": "PCRE-regex для поиска при remote_name='latest'. Используется только в legacy-latest режиме."
+                        }
+                    }
+                }
+            ]
+        },
+        "family": {
+            "description": "Family-режим: одна запись описывает семейство версий. Регэксп выбирает кандидатов в SHA256SUMS, версионно-старший пишется локально по шаблону.",
+            "allOf": [
+                { "$ref": "#/definitions/common" },
+                {
+                    "type": "object",
+                    "required": ["url_dir", "remote_pattern", "local_name_template"],
+                    "properties": {
+                        "remote_pattern": {
+                            "type": "string",
+                            "description": "PCRE-regex с минимум одной capture group по именам файлов в SHA256SUMS. Среди совпавших выбирается версионно-старший."
+                        },
+                        "local_name_template": {
+                            "type": "string",
+                            "description": "Шаблон локального имени, {1}/{2}/... подставляются capture groups. Пример: 'Proxmox_BackUP_{1}.iso'"
+                        },
+                        "cleanup_old": {
+                            "type": "boolean",
+                            "default": false,
+                            "description": "После успешной загрузки удалять файлы в той же подпапке, чьи имена матчатся под template (но не равны текущему). ВНИМАНИЕ: необратимо."
+                        }
+                    }
+                }
+            ]
         }
     }
 }
