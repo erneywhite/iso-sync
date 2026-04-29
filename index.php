@@ -111,6 +111,9 @@ if (is_dir($filesDir)) {
 <link rel="icon" href="favicon.ico" type="image/x-icon">
 <style>
 :root {
+    /* Подсказка браузеру: страница тёмная — нативные контролы (option, скроллбары,
+       автокомплит, дата-пикеры) должны рисоваться в тёмной палитре. */
+    color-scheme: dark;
     --bg-1:#06101a;
     --bg-2:#0a1830;
     --surface-1:rgba(255,255,255,0.025);
@@ -211,6 +214,8 @@ h1{
     cursor:pointer;
 }
 .sort:focus{outline:none;border-color:rgba(86,193,255,0.4)}
+.sort option{background-color:#0a1628;color:var(--text)}
+.sort option:checked{background-color:rgba(86,193,255,0.2)}
 
 /* ========== Status bar ========== */
 .status-bar{
