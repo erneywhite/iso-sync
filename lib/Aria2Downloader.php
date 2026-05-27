@@ -110,6 +110,10 @@ final class Aria2Downloader implements DownloaderInterface
             '--retry-wait=10',
             '--connect-timeout=30',
             '--timeout=60',
+            // Форсим IPv4 — согласованно с cURL (CURLOPT_IPRESOLVE = V4). На серверах
+            // с настроенным но нерабочим IPv6 (как у netcup без IPv6-маршрута) загрузка
+            // по AAAA повисла бы; IPv4 предсказуемее.
+            '--disable-ipv6=true',
             '--check-certificate=' . ($insecure ? 'false' : 'true'),
             '--user-agent=' . escapeshellarg(self::USER_AGENT),
             '-d', escapeshellarg($tmpDir),
