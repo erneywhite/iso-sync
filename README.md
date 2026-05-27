@@ -101,13 +101,13 @@ iso-sync/
 | Дистрибутив     | Версии                    | Проверка SHA256 | Источник                          |
 |-----------------|---------------------------|--------------|-----------------------------------|
 | Debian          | 11, 12, 13                | ✅            | cdimage.debian.org                |
-| Ubuntu          | 22.04, 24.04, 25.04       | ✅            | releases.ubuntu.com               |
+| Ubuntu          | все `.04` (discovery)     | ✅            | releases.ubuntu.com               |
 | CentOS          | 7                         | ✅            | mirror.yandex.ru                  |
 | CentOS Stream   | 9, 10                     | ✅ (`latest`) | ftp.byfly.by                      |
 | AlmaLinux       | 8, 9, 10                  | ✅            | raw.repo.almalinux.org            |
-| Proxmox VE      | 7.4, 8.4, 9.1             | ✅            | enterprise.proxmox.com            |
-| Proxmox Backup  | 4.0                       | ✅            | enterprise.proxmox.com            |
-| Proxmox Mail    | 7.3                       | ✅            | enterprise.proxmox.com            |
+| Proxmox VE      | 7.x, 8.x, 9.x (family)    | ✅            | download.proxmox.com              |
+| Proxmox Backup  | 4.x (family)              | ✅            | download.proxmox.com              |
+| Proxmox Mail    | 7.x (family)              | ✅            | download.proxmox.com              |
 | ArchLinux       | latest                    | ✅            | mirror.yandex.ru                  |
 | VirtIO-win      | latest                    | ⚠ только размер+mtime | fedorapeople.org                  |
 
@@ -215,7 +215,7 @@ php update_iso.php
 ```jsonc
 "proxmox-backup-4": {
     "local_subdir":        "Proxmox",
-    "url_dir":             "https://enterprise.proxmox.com/iso/",
+    "url_dir":             "https://download.proxmox.com/iso/",
     "remote_pattern":      "/^proxmox-backup-server_4\\.(\\d+)-\\d+\\.iso$/",
     "local_name_template": "Proxmox_BackUP_4.{1}.iso",
     "cleanup_old":         true
