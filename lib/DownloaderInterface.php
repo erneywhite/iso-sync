@@ -22,6 +22,7 @@ interface DownloaderInterface
      *                                  Передавай null если локального файла ещё нет.
      * @param bool   $checkUnchanged true → если HEAD говорит что remote не изменился
      *                              (size совпал И Last-Modified ≤ local mtime), пропустить
+     * @param string $ipVersion 'v4' (дефолт) / 'v6' / 'any' — какой IP-протокол использовать
      *
      * @return array{success:bool, skipped:bool, expected_size:?int, actual_size:?int, error:?string}
      */
@@ -30,6 +31,7 @@ interface DownloaderInterface
         string $destination,
         bool $insecure = false,
         ?array $localFileInfo = null,
-        bool $checkUnchanged = false
+        bool $checkUnchanged = false,
+        string $ipVersion = 'v4'
     ): array;
 }

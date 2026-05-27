@@ -27,9 +27,10 @@ final class Downloader implements DownloaderInterface
         string $destination,
         bool $insecure = false,
         ?array $localFileInfo = null,
-        bool $checkUnchanged = false
+        bool $checkUnchanged = false,
+        string $ipVersion = 'v4'
     ): array {
-        $head = $this->http->head($url, $insecure);
+        $head = $this->http->head($url, $insecure, $ipVersion);
         $expectedSize = $head['content_length'] ?? null;
         $remoteMTime  = $head['last_modified']  ?? null;
 
@@ -84,7 +85,7 @@ final class Downloader implements DownloaderInterface
                 return ['success' => false, 'skipped' => false, 'expected_size' => $expectedSize, 'actual_size' => null, 'error' => $lastError];
             }
 
-            curl_setopt_array($ch, $this->http->commonOptions($insecure) + [
+            curl_setopt_array($ch, $this->http->commonOptions($insecure, $ipVersion) + [
                 CURLOPT_FILE        => $fp,
                 CURLOPT_TIMEOUT     => 0,
                 CURLOPT_CONNECTTIMEOUT => 30,

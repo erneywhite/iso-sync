@@ -32,17 +32,18 @@ final class GpgVerifier
      * @param string  $checksumsContent тело SHA256SUMS, к которому подпись
      * @param ?string $expectedKeyFp    ожидаемый отпечаток ключа (для warning, если не совпадёт)
      * @param bool    $insecureSsl
+     * @param string  $ipVersion        'v4' / 'v6' / 'any'
      *
      * @return array{ok:bool, reason:string}
      */
-    public function verify(string $signatureUrl, string $checksumsContent, ?string $expectedKeyFp, bool $insecureSsl): array
+    public function verify(string $signatureUrl, string $checksumsContent, ?string $expectedKeyFp, bool $insecureSsl, string $ipVersion = 'v4'): array
     {
         $gpg = $this->resolveGpg();
         if ($gpg === null) {
             return ['ok' => false, 'reason' => 'gpg не найден в PATH'];
         }
 
-        $sig = $this->http->getText($signatureUrl, $insecureSsl);
+        $sig = $this->http->getText($signatureUrl, $insecureSsl, $ipVersion);
         if ($sig === null) {
             return ['ok' => false, 'reason' => "не удалось скачать подпись: {$signatureUrl}"];
         }

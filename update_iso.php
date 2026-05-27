@@ -48,20 +48,23 @@ try {
     $http       = new Http();
     $gpg        = new GpgVerifier($http, $logger);
 
-    // Выбор downloader'а: если в системе есть aria2c — берём его (multi-stream
-    // через HTTP Range, обходит per-connection rate-limit многих серверов).
-    // Иначе fallback на штатный cURL-Downloader.
+    // cURL-Downloader нужен всегда: как fallback и как backend для ip_version=v6
+    // (чистый IPv6-only через CURL_IPRESOLVE_V6; aria2c так надёжно не умеет).
+    $curl = new Downloader($http, $logger);
+
+    // Основной downloader: aria2c если есть (multi-stream через HTTP Range,
+    // обходит per-connection rate-limit), иначе cURL.
     $aria2 = new Aria2Downloader($http, $logger);
-    /** @var DownloaderInterface $downloader */
+    /** @var DownloaderInterface $primary */
     if ($aria2->isAvailable()) {
-        $downloader = $aria2;
+        $primary = $aria2;
         $logger->info('Использую aria2c для загрузки: ' . $aria2->binaryPath(), [
-            'event'    => 'downloader_chosen',
-            'backend'  => 'aria2c',
-            'binary'   => $aria2->binaryPath(),
+            'event'   => 'downloader_chosen',
+            'backend' => 'aria2c',
+            'binary'  => $aria2->binaryPath(),
         ]);
     } else {
-        $downloader = new Downloader($http, $logger);
+        $primary = $curl;
         $logger->info('aria2c не найден, использую cURL-Downloader (apt install aria2 для ускорения)', [
             'event'   => 'downloader_chosen',
             'backend' => 'curl',
@@ -69,13 +72,14 @@ try {
     }
 
     $updater = new Updater(
-        config:     $config,
-        localDir:   $localDir,
-        hashCache:  $hashCache,
-        downloader: $downloader,
-        http:       $http,
-        gpg:        $gpg,
-        logger:     $logger,
+        config:         $config,
+        localDir:       $localDir,
+        hashCache:      $hashCache,
+        downloader:     $primary,
+        ipv6Downloader: $curl,
+        http:           $http,
+        gpg:            $gpg,
+        logger:         $logger,
     );
 
     $summary = $updater->run();

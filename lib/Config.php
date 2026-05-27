@@ -57,6 +57,8 @@ final class IsoEntry
         // discovery
         public readonly ?string $urlTemplate,
         public readonly ?array $folderEnum,
+        // network
+        public readonly string $ipVersion,
     ) {}
 
     public function isDiscovery(): bool
@@ -195,6 +197,11 @@ final class Config
 
         $gpg = $info['gpg'] ?? null;
 
+        $ipVersion = (string)($info['ip_version'] ?? 'v4');
+        if (!in_array($ipVersion, ['v4', 'v6', 'any'], true)) {
+            throw new RuntimeException("Запись '{$localName}': 'ip_version' должен быть 'v4', 'v6' или 'any'");
+        }
+
         return new IsoEntry(
             localName:                    $localName,
             localSubdir:                  (string)($info['local_subdir'] ?? ''),
@@ -214,6 +221,7 @@ final class Config
             cleanupOld:                   (bool)($info['cleanup_old'] ?? false),
             urlTemplate:                  $urlTemplate,
             folderEnum:                   $folderEnum,
+            ipVersion:                    $ipVersion,
         );
     }
 

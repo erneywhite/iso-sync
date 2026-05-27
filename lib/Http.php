@@ -20,12 +20,12 @@ final class Http
     /**
      * GET — возвращает тело или null при любой ошибке.
      */
-    public function getText(string $url, bool $insecure = false): ?string
+    public function getText(string $url, bool $insecure = false, string $ipVersion = 'v4'): ?string
     {
         $ch = curl_init($url);
         if ($ch === false) return null;
 
-        curl_setopt_array($ch, $this->commonOptions($insecure) + [
+        curl_setopt_array($ch, $this->commonOptions($insecure, $ipVersion) + [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_FAILONERROR    => true,
             CURLOPT_CONNECTTIMEOUT => $this->connectTimeout,
@@ -46,12 +46,12 @@ final class Http
      *
      * @return array{status:int,content_length:?int,last_modified:?int,final_url:string}|null
      */
-    public function head(string $url, bool $insecure = false): ?array
+    public function head(string $url, bool $insecure = false, string $ipVersion = 'v4'): ?array
     {
         $ch = curl_init($url);
         if ($ch === false) return null;
 
-        curl_setopt_array($ch, $this->commonOptions($insecure) + [
+        curl_setopt_array($ch, $this->commonOptions($insecure, $ipVersion) + [
             CURLOPT_NOBODY         => true,
             CURLOPT_HEADER         => true,
             CURLOPT_RETURNTRANSFER => true,
@@ -97,11 +97,12 @@ final class Http
      *  - TCP_KEEPALIVE — держим соединение живым, без него на длинных загрузках бывают разрывы
      *  - HTTP_VERSION = 1.1 — на single-stream загрузке ISO почти всегда быстрее HTTP/2
      *    (HTTP/2 имеет flow-control и multiplexing-overhead, который не помогает при одном файле)
-     *  - IPRESOLVE = V4 — некоторые хостинги имеют медленный IPv6, форсим v4 для предсказуемости
+     *  - IPRESOLVE — по умолчанию V4 (на серверах с битым IPv6 v4 предсказуемее).
+     *    Управляется per-entry опцией ip_version: 'v4' (дефолт) / 'v6' / 'any'.
      *
      * @return array<int,mixed>
      */
-    public function commonOptions(bool $insecure): array
+    public function commonOptions(bool $insecure, string $ipVersion = 'v4'): array
     {
         return [
             CURLOPT_USERAGENT      => $this->userAgent,
@@ -113,7 +114,16 @@ final class Http
             CURLOPT_TCP_NODELAY    => true,
             CURLOPT_TCP_KEEPALIVE  => 1,
             CURLOPT_HTTP_VERSION   => CURL_HTTP_VERSION_1_1,
-            CURLOPT_IPRESOLVE      => CURL_IPRESOLVE_V4,
+            CURLOPT_IPRESOLVE      => self::ipResolve($ipVersion),
         ];
+    }
+
+    public static function ipResolve(string $ipVersion): int
+    {
+        return match ($ipVersion) {
+            'v6'  => CURL_IPRESOLVE_V6,
+            'any' => CURL_IPRESOLVE_WHATEVER,
+            default => CURL_IPRESOLVE_V4,
+        };
     }
 }

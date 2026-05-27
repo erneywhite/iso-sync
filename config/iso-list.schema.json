@@ -44,6 +44,12 @@
                     "default": false,
                     "description": "Отключить проверку SSL для проблемных зеркал. По умолчанию проверяется."
                 },
+                "ip_version": {
+                    "type": "string",
+                    "enum": ["v4", "v6", "any"],
+                    "default": "v4",
+                    "description": "Какой IP-протокол использовать. v4 (дефолт) форсит IPv4 — предсказуемо на серверах с битым IPv6. v6 нужен для обхода IPv4-блоков (напр. CDN proxmox). any — пусть curl выбирает. Для v6-записей загрузка идёт через cURL (чистый IPv6-only), не aria2c."
+                },
                 "checksum_files": {
                     "type": "array",
                     "items": {"type": "string"},

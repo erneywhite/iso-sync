@@ -22,11 +22,17 @@ final class Updater
         'SHA256SUMS', 'SHA256SUM', 'sha256sum.txt', 'sha256sums.txt', 'CHECKSUM',
     ];
 
+    /**
+     * @param DownloaderInterface $downloader        основной (aria2c если есть, иначе cURL) — для ip_version v4/any
+     * @param DownloaderInterface $ipv6Downloader     для ip_version=v6 (всегда cURL: чистый IPv6-only,
+     *                                                aria2c не умеет надёжно «только IPv6» при блоке IPv4)
+     */
     public function __construct(
         private readonly Config $config,
         private readonly string $localDir,
         private readonly HashCache $hashCache,
         private readonly DownloaderInterface $downloader,
+        private readonly DownloaderInterface $ipv6Downloader,
         private readonly Http $http,
         private readonly GpgVerifier $gpg,
         private readonly Logger $logger,
@@ -91,7 +97,7 @@ final class Updater
 
         // 2. Опциональная проверка GPG-подписи
         if ($entry->gpgSignatureUrl !== null) {
-            $verdict = $this->gpg->verify($entry->gpgSignatureUrl, $shaContent, $entry->gpgKeyFingerprint, $entry->insecureSsl);
+            $verdict = $this->gpg->verify($entry->gpgSignatureUrl, $shaContent, $entry->gpgKeyFingerprint, $entry->insecureSsl, $entry->ipVersion);
             if (!$verdict['ok']) {
                 $msg = "GPG verify failed: {$verdict['reason']}";
                 $this->logger->error($msg, ['event' => 'gpg_failed', 'file' => $entry->localName]);
@@ -200,7 +206,7 @@ final class Updater
         foreach ($checksumNames as $name) {
             $tryUrl = $entry->urlDir . $name;
             $this->logger->info("Пробуем чексуммы: {$tryUrl}", ['event' => 'checksum_try', 'url' => $tryUrl]);
-            $body = $this->http->getText($tryUrl, $entry->insecureSsl);
+            $body = $this->http->getText($tryUrl, $entry->insecureSsl, $entry->ipVersion);
             if ($body !== null) {
                 return [$body, $tryUrl];
             }
@@ -268,12 +274,16 @@ final class Updater
             ];
         }
 
-        $result = $this->downloader->download(
+        // Для v6 — cURL (чистый IPv6-only), для v4/any — основной (aria2c если есть).
+        $dl = $entry->ipVersion === 'v6' ? $this->ipv6Downloader : $this->downloader;
+
+        $result = $dl->download(
             $url,
             $tmp,
             insecure: $entry->insecureSsl,
             localFileInfo: $localFileInfo,
-            checkUnchanged: $entry->skipIfUnchanged && $expectedHash === null
+            checkUnchanged: $entry->skipIfUnchanged && $expectedHash === null,
+            ipVersion: $entry->ipVersion
         );
 
         if (!$result['success']) {
@@ -425,7 +435,7 @@ final class Updater
     {
         $names = $entry->checksumFiles ?? self::DEFAULT_CHECKSUM_FILES;
         foreach ($names as $name) {
-            $head = $this->http->head($folderUrl . $name, $entry->insecureSsl);
+            $head = $this->http->head($folderUrl . $name, $entry->insecureSsl, $entry->ipVersion);
             if ($head !== null && $head['status'] >= 200 && $head['status'] < 300) {
                 return true;
             }
@@ -457,6 +467,7 @@ final class Updater
             cleanupOld:                   $entry->cleanupOld,
             urlTemplate:                  null,
             folderEnum:                   null,
+            ipVersion:                    $entry->ipVersion,
         );
     }
 

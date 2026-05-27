@@ -51,7 +51,8 @@ final class Aria2Downloader implements DownloaderInterface
         string $destination,
         bool $insecure = false,
         ?array $localFileInfo = null,
-        bool $checkUnchanged = false
+        bool $checkUnchanged = false,
+        string $ipVersion = 'v4'
     ): array {
         if ($this->aria2Bin === null) {
             return ['success' => false, 'skipped' => false, 'expected_size' => null, 'actual_size' => null,
@@ -59,7 +60,7 @@ final class Aria2Downloader implements DownloaderInterface
         }
 
         // HEAD для skip_if_unchanged и валидации Content-Length
-        $head = $this->http->head($url, $insecure);
+        $head = $this->http->head($url, $insecure, $ipVersion);
         $expectedSize = $head['content_length'] ?? null;
         $remoteMTime  = $head['last_modified']  ?? null;
 
@@ -110,10 +111,10 @@ final class Aria2Downloader implements DownloaderInterface
             '--retry-wait=10',
             '--connect-timeout=30',
             '--timeout=60',
-            // Форсим IPv4 — согласованно с cURL (CURLOPT_IPRESOLVE = V4). На серверах
-            // с настроенным но нерабочим IPv6 (как у netcup без IPv6-маршрута) загрузка
-            // по AAAA повисла бы; IPv4 предсказуемее.
-            '--disable-ipv6=true',
+            // v4 → форсим IPv4 (предсказуемо на серверах с битым IPv6). v6-записи
+            // сюда не попадают — Updater гонит их через cURL (чистый IPv6-only),
+            // т.к. aria2c не умеет надёжно «только IPv6» при заблокированном IPv4.
+            ...($ipVersion === 'v4' ? ['--disable-ipv6=true'] : []),
             '--check-certificate=' . ($insecure ? 'false' : 'true'),
             '--user-agent=' . escapeshellarg(self::USER_AGENT),
             '-d', escapeshellarg($tmpDir),
