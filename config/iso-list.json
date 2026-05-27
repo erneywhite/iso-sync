@@ -104,10 +104,12 @@
             "cleanup_old":         true
         },
 
+        "_comment_virtio": "У virtio-win НЕТ чек-суммы для .iso (CHECKSUM содержит только MD5 для .rpm). checksum_files:[] отключает бесполезные попытки их тянуть. Целостность после загрузки гарантируется сверкой Content-Length; обновление ловится по size+mtime (skip_if_unchanged) когда симлинк stable-virtio переедет на новый релиз.",
         "QEMU_virtio-win-latest.iso": {
             "local_subdir": "Windows",
             "url_dir": "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/",
             "remote_name": "virtio-win.iso",
+            "checksum_files": [],
             "force_download_without_checksum": true,
             "skip_if_unchanged": true
         },
