@@ -105,9 +105,9 @@ iso-sync/
 | CentOS          | 7                         | ✅            | mirror.yandex.ru                  |
 | CentOS Stream   | 9, 10                     | ✅ (`latest`) | ftp.byfly.by                      |
 | AlmaLinux       | 8, 9, 10                  | ✅            | raw.repo.almalinux.org            |
-| Proxmox VE      | 7.x, 8.x, 9.x (family)    | ✅            | download.proxmox.com              |
-| Proxmox Backup  | 4.x (family)              | ✅            | download.proxmox.com              |
-| Proxmox Mail    | 7.x (family)              | ✅            | download.proxmox.com              |
+| Proxmox VE      | 7.x, 8.x, 9.x (family)    | ✅            | mirrors.xtom.de (зеркало)         |
+| Proxmox Backup  | 4.x (family)              | ✅            | mirrors.xtom.de (зеркало)         |
+| Proxmox Mail    | 7.x (family)              | ✅            | mirrors.xtom.de (зеркало)         |
 | ArchLinux       | latest                    | ✅            | mirror.yandex.ru                  |
 | VirtIO-win      | latest                    | ⚠ только размер+mtime | fedorapeople.org                  |
 
@@ -215,7 +215,7 @@ php update_iso.php
 ```jsonc
 "proxmox-backup-4": {
     "local_subdir":        "Proxmox",
-    "url_dir":             "https://download.proxmox.com/iso/",
+    "url_dir":             "https://mirrors.xtom.de/proxmox/iso/",
     "remote_pattern":      "/^proxmox-backup-server_4\\.(\\d+)-\\d+\\.iso$/",
     "local_name_template": "Proxmox_BackUP_4.{1}.iso",
     "cleanup_old":         true
@@ -230,6 +230,8 @@ php update_iso.php
 4. После успешной загрузки старые `Proxmox_BackUP_4.0.iso`, `Proxmox_BackUP_4.1.iso` удаляются (т.к. `cleanup_old: true`)
 
 JSON-ключ записи (`proxmox-backup-4`) — произвольный идентификатор семейства, не используется как имя файла.
+
+> **Почему зеркало `mirrors.xtom.de`, а не `download.proxmox.com`?** Официальный CDN Proxmox (`enterprise.` / `download.proxmox.com`, хостится через ipax.at в Вене) дропает TCP-трафик из ряда хостинговых сетей (например netcup AS197540) — соединение просто таймаутит, хотя DNS резолвит корректно. `mirrors.xtom.de` (DE/NL) раздаёт те же файлы с тем же форматом имён. Если зеркало вам не подходит — подставьте любое достижимое из вашей сети (`download.proxmox.com` напрямую, либо `mirrors.tuna.tsinghua.edu.cn/proxmox/iso/` и т.п.).
 
 ### Режим 4: `discovery` — перебор папок по диапазону
 

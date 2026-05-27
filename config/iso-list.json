@@ -62,38 +62,38 @@
             "remote_name": "AlmaLinux-10-latest-x86_64-dvd.iso"
         },
 
-        "_comment_proxmox": "Family-режим: одна запись = одно семейство (мажорная ветка). regex захватывает версию, локальное имя строится по шаблону, при выходе новой версии старая удаляется.",
+        "_comment_proxmox": "Family-режим: одна запись = одно семейство (мажорная ветка). regex захватывает версию, локальное имя строится по шаблону, при выходе новой версии старая удаляется. URL — зеркало mirrors.xtom.de (DE/NL): официальный CDN proxmox (enterprise/download.proxmox.com) дропает трафик из ряда сетей (напр. netcup AS197540). Зеркало раздаёт те же файлы. Если будете менять — выберите достижимое из вашей сети зеркало download.proxmox.com.",
         "proxmox-ve-7": {
             "local_subdir":        "Proxmox",
-            "url_dir":             "https://download.proxmox.com/iso/",
+            "url_dir":             "https://mirrors.xtom.de/proxmox/iso/",
             "remote_pattern":      "/^proxmox-ve_7\\.(\\d+)-\\d+\\.iso$/",
             "local_name_template": "ProxmoxVE_7.{1}.iso",
             "cleanup_old":         true
         },
         "proxmox-ve-8": {
             "local_subdir":        "Proxmox",
-            "url_dir":             "https://download.proxmox.com/iso/",
+            "url_dir":             "https://mirrors.xtom.de/proxmox/iso/",
             "remote_pattern":      "/^proxmox-ve_8\\.(\\d+)-\\d+\\.iso$/",
             "local_name_template": "ProxmoxVE_8.{1}.iso",
             "cleanup_old":         true
         },
         "proxmox-ve-9": {
             "local_subdir":        "Proxmox",
-            "url_dir":             "https://download.proxmox.com/iso/",
+            "url_dir":             "https://mirrors.xtom.de/proxmox/iso/",
             "remote_pattern":      "/^proxmox-ve_9\\.(\\d+)-\\d+\\.iso$/",
             "local_name_template": "ProxmoxVE_9.{1}.iso",
             "cleanup_old":         true
         },
         "proxmox-backup-4": {
             "local_subdir":        "Proxmox",
-            "url_dir":             "https://download.proxmox.com/iso/",
+            "url_dir":             "https://mirrors.xtom.de/proxmox/iso/",
             "remote_pattern":      "/^proxmox-backup-server_4\\.(\\d+)-\\d+\\.iso$/",
             "local_name_template": "Proxmox_BackUP_4.{1}.iso",
             "cleanup_old":         true
         },
         "proxmox-mail-7": {
             "local_subdir":        "Proxmox",
-            "url_dir":             "https://download.proxmox.com/iso/",
+            "url_dir":             "https://mirrors.xtom.de/proxmox/iso/",
             "remote_pattern":      "/^proxmox-mailgateway_7\\.(\\d+)-\\d+\\.iso$/",
             "local_name_template": "Proxmox_MailGateway_7.{1}.iso",
             "cleanup_old":         true
