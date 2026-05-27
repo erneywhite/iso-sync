@@ -202,14 +202,17 @@ h1{
     vertical-align:middle;
 }
 
-.actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+/* actions растянуты на всё свободное место в шапке — внутри только поиск */
+.actions{display:flex;gap:10px;align-items:center;flex:1 1 auto;min-width:0;max-width:640px}
 .search{
+    flex:1 1 auto;
+    width:100%;
+    min-width:0;
     background:var(--surface-1);
     border:1px solid var(--border-1);
     padding:11px 14px 11px 38px;
     border-radius:var(--radius-sm);
     color:inherit;
-    min-width:320px;
     font-size:14px;
     transition:border-color .15s, background .15s;
     background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239fb0c1' stroke-width='2' stroke-linecap='round'><circle cx='11' cy='11' r='7'/><line x1='21' y1='21' x2='16.65' y2='16.65'/></svg>");
@@ -217,18 +220,6 @@ h1{
     background-position:12px center;
 }
 .search:focus{outline:none;border-color:rgba(86,193,255,0.4);background-color:rgba(86,193,255,0.04)}
-.sort{
-    background:var(--surface-1);
-    border:1px solid var(--border-1);
-    padding:10px 12px;
-    border-radius:var(--radius-sm);
-    color:var(--text);
-    font-size:13px;
-    cursor:pointer;
-}
-.sort:focus{outline:none;border-color:rgba(86,193,255,0.4)}
-.sort option{background-color:#0a1628;color:var(--text)}
-.sort option:checked{background-color:rgba(86,193,255,0.2)}
 
 /* ========== Status bar ========== */
 .status-bar{
@@ -538,12 +529,8 @@ h1{
 mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border-radius:3px}
 
 /* ========== Responsive ========== */
-@media (max-width:1100px){
-    .search{min-width:240px}
-}
 @media (max-width:880px){
     .container{margin:16px auto;padding:0 14px 20px}
-    .search{min-width:200px}
     h1{font-size:20px}
     .row{padding:12px 14px;gap:12px}
     .thumb{width:40px;height:40px}
@@ -553,8 +540,7 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
 @media (max-width:640px){
     header{flex-direction:column;align-items:stretch}
     .brand{justify-content:flex-start}
-    .actions{width:100%}
-    .search{flex:1;width:100%}
+    .actions{width:100%;max-width:none}
     .row{grid-template-columns:auto 1fr;grid-template-areas:"thumb meta" "btns btns"}
     .thumb{grid-area:thumb}
     .meta{grid-area:meta}
@@ -598,15 +584,7 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
                 <h1>iso-файлы<span class="tag">mirror</span></h1>
             </div>
             <div class="actions">
-                <input id="search" class="search" placeholder="Поиск по имени..." aria-label="Поиск по имени" />
-                <select id="sort" class="sort" aria-label="Сортировка">
-                    <option value="mtime_desc">По дате (новые сверху)</option>
-                    <option value="mtime_asc">По дате (старые сверху)</option>
-                    <option value="size_desc">По размеру (больше)</option>
-                    <option value="size_asc">По размеру (меньше)</option>
-                    <option value="name_asc">По имени (A→Z)</option>
-                    <option value="name_desc">По имени (Z→A)</option>
-                </select>
+                <input id="search" class="search" placeholder="Поиск по имени... (Ctrl+K)" aria-label="Поиск по имени" />
             </div>
         </header>
 
@@ -860,9 +838,13 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
         const listEl=document.getElementById('list'),
               countEl=document.getElementById('count'),
               searchInput=document.getElementById('search'),
-              sortSelect=document.getElementById('sort'),
               toast=document.getElementById('toast');
         let lastQuery = '';
+
+        // Натуральное сравнение (учитывает числа: 9 < 10, 22.04 < 26.04)
+        function natCmp(a, b){
+            return String(a).localeCompare(String(b), undefined, {numeric:true, sensitivity:'base'});
+        }
 
         function showToast(t){
             toast.innerHTML = svgIcon('ic-check') + escapeHtml(t);
@@ -1075,42 +1057,20 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
                     return it.name.toLowerCase().includes(q)?it:null;
                 }).filter(Boolean);
             }
-            const s=sortSelect.value;
+            // Фиксированная сортировка (ручной выбор убран):
+            //  - внутри папок файлы по натуральному имени УБЫВАЮЩЕ (новейшие версии сверху)
+            //  - на верхнем уровне папки идут первыми и по алфавиту (A→Z),
+            //    свободные файлы — новейшие сверху
             items.forEach(it=>{
                 if(it.type==='dir' && Array.isArray(it.children)){
-                    it.children.sort((a,b)=>{
-                        switch(s){
-                            case 'mtime_desc': return b.mtime - a.mtime;
-                            case 'mtime_asc': return a.mtime - b.mtime;
-                            case 'size_desc': return b.size - a.size;
-                            case 'size_asc': return a.size - b.size;
-                            case 'name_desc': return b.name.localeCompare(a.name);
-                            default: return a.name.localeCompare(b.name);
-                        }
-                    });
+                    it.children.sort((a,b)=> natCmp(b.name, a.name));
                 }
             });
             items.sort((a,b)=>{
                 if(a.type==='dir' && b.type!=='dir') return -1;
                 if(b.type==='dir' && a.type!=='dir') return 1;
-                if(s==='name_asc' || s==='name_desc'){
-                    return (s==='name_desc' ? b.name.localeCompare(a.name) : a.name.localeCompare(b.name));
-                }
-                if(s==='mtime_desc' || s==='mtime_asc' || s==='size_desc' || s==='size_asc'){
-                    if(a.type==='dir' && b.type==='dir'){
-                        if(s.startsWith('size')) return s==='size_desc' ? (b.size||0)-(a.size||0) : (a.size||0)-(b.size||0);
-                        return a.name.localeCompare(b.name);
-                    }
-                    if(a.type!=='dir' && b.type!=='dir'){
-                        switch(s){
-                            case 'mtime_desc': return b.mtime - a.mtime;
-                            case 'mtime_asc': return a.mtime - b.mtime;
-                            case 'size_desc': return b.size - a.size;
-                            case 'size_asc': return a.size - b.size;
-                        }
-                    }
-                }
-                return 0;
+                if(a.type==='dir') return natCmp(a.name, b.name);   // папки A→Z
+                return natCmp(b.name, a.name);                       // файлы — новее сверху
             });
 
             render(items);
@@ -1125,7 +1085,6 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
             createSkeleton(4);
             setTimeout(()=>apply(),80);
         });
-        sortSelect.addEventListener('change',apply);
 
         document.addEventListener('keydown', e=>{
             if(e.key==='Escape'){
