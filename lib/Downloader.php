@@ -139,7 +139,7 @@ final class Downloader implements DownloaderInterface
             $ok       = curl_exec($ch);
             $errNo    = curl_errno($ch);
             $errStr   = curl_error($ch);
-            curl_close($ch);
+            unset($ch);
             fclose($fp);
             $this->logger->endProgress();
 
