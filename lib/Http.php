@@ -34,7 +34,7 @@ final class Http
 
         $body = curl_exec($ch);
         $err  = curl_errno($ch);
-        curl_close($ch);
+        unset($ch);
 
         return ($err === 0 && is_string($body)) ? $body : null;
     }
@@ -64,7 +64,7 @@ final class Http
         $status     = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
         $finalUrl   = (string)curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
         $lengthInfo = curl_getinfo($ch, CURLINFO_CONTENT_LENGTH_DOWNLOAD);
-        curl_close($ch);
+        unset($ch);
 
         if ($err !== 0 || !is_string($rawHeaders)) {
             return null;
