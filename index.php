@@ -215,11 +215,17 @@ if (is_dir($filesDir)) {
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto;font-feature-settings:'cv11','ss01'}
 /* Прокрутка идёт внутри .card, body не скроллится — шапка и статус-бар фиксированы,
-   фон без шва на любом размере страницы. */
+   фон без шва на любом размере страницы.
+   Mesh-gradient: 5 цветных blob'ов перекрывают друг друга, смешиваясь в "сетку"
+   как в Stripe/Spotify-дизайнах. Сам body — статичный mesh; ::before добавляет
+   2 движущихся blob'а сверху для эффекта "живости". */
 body{
     background:
-        radial-gradient(ellipse 70% 50% at 15% -5%, rgba(168,85,247,0.20) 0%, transparent 60%),
-        radial-gradient(ellipse 60% 50% at 100% 100%, rgba(232,121,249,0.14) 0%, transparent 60%),
+        radial-gradient(circle 700px at 10% 5%, rgba(168,85,247,0.26) 0%, transparent 55%),
+        radial-gradient(circle 550px at 95% 12%, rgba(232,121,249,0.20) 0%, transparent 55%),
+        radial-gradient(circle 800px at 100% 55%, rgba(240,171,252,0.13) 0%, transparent 55%),
+        radial-gradient(circle 900px at 5% 100%, rgba(124,58,237,0.22) 0%, transparent 55%),
+        radial-gradient(circle 700px at 60% 110%, rgba(232,121,249,0.12) 0%, transparent 55%),
         linear-gradient(180deg,var(--bg-1),var(--bg-2));
     color:var(--text);
     height:100vh;
@@ -229,27 +235,38 @@ body{
 }
 ::selection{background:rgba(168,85,247,0.35);color:#fff}
 
-/* Анимированный nebula-фон.
-   Три неоновых "облака" медленно дрейфуют, цикл 45 сек. transform + opacity —
-   GPU-композитное, ноль нагрузки на CPU. На всю страницу через position:fixed,
-   pointer-events:none чтобы не мешать кликам. z-index:-1 уводит под контент. */
+/* Movement layer: 2 blob'а медленно дрейфуют поверх статичного mesh.
+   transform + opacity = GPU-композитное, ноль нагрузки на CPU. */
 body::before{
     content:'';
     position:fixed;
     inset:-10%;
-    z-index:-1;
+    z-index:-2;
     pointer-events:none;
     background:
-        radial-gradient(ellipse 600px 450px at 25% 35%, rgba(168,85,247,0.22), transparent 65%),
-        radial-gradient(ellipse 500px 400px at 75% 65%, rgba(232,121,249,0.16), transparent 65%),
-        radial-gradient(ellipse 700px 500px at 50% 100%, rgba(124,58,237,0.14), transparent 65%);
+        radial-gradient(ellipse 500px 400px at 35% 35%, rgba(168,85,247,0.20), transparent 65%),
+        radial-gradient(ellipse 450px 380px at 70% 65%, rgba(232,121,249,0.14), transparent 65%);
     animation:nebula-drift 45s ease-in-out infinite alternate;
 }
 @keyframes nebula-drift{
     0%{transform:translate(0,0) scale(1);opacity:0.85}
-    50%{transform:translate(40px,-25px) scale(1.06);opacity:1}
-    100%{transform:translate(-25px,35px) scale(0.98);opacity:0.9}
+    50%{transform:translate(50px,-30px) scale(1.08);opacity:1}
+    100%{transform:translate(-30px,40px) scale(0.97);opacity:0.9}
 }
+
+/* Subtle grain/noise — SVG-шум через data-URI, накладывается mix-blend-mode'ом
+   поверх mesh. Inline-размер ~1 KB. Без анимации, без CPU — статичная текстура. */
+body::after{
+    content:'';
+    position:fixed;
+    inset:0;
+    z-index:-1;
+    pointer-events:none;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' seed='7' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.85  0 0 0 0 0.7  0 0 0 0 1  0 0 0 0.55 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    opacity:0.07;
+    mix-blend-mode:overlay;
+}
+
 @media (prefers-reduced-motion: reduce){
     body::before{animation:none}
 }
