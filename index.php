@@ -464,6 +464,31 @@ h1{
     padding:1px 8px;border-radius:999px;
     font-size:10.5px;font-weight:700;letter-spacing:0.04em;
     text-transform:uppercase;
+    position:relative;
+    overflow:hidden;
+}
+/* Периодический shimmer-проход по бейджу. Большую часть цикла полоска
+   "за кадром" (translateX -150%), быстрый сладкий проход — на 30% цикла.
+   animation-delay задаётся inline через JS (Math.random() * -5s) — все
+   бейджи светятся в разных фазах, выглядит "живым", а не "лампа моргает". */
+.latest-badge::after{
+    content:'';
+    position:absolute;inset:0;
+    pointer-events:none;
+    background:linear-gradient(110deg,
+        transparent 0%, transparent 35%,
+        rgba(255,255,255,0.35) 50%,
+        transparent 65%, transparent 100%);
+    transform:translateX(-150%);
+    animation:latestShimmer 5s ease-in-out infinite;
+    animation-delay:var(--shimmer-delay, 0s);
+}
+@keyframes latestShimmer{
+    0%, 70% { transform:translateX(-150%) }
+    100%    { transform:translateX(150%) }
+}
+@media (prefers-reduced-motion: reduce){
+    .latest-badge::after{animation:none}
 }
 
 .btns{display:flex;align-items:center;gap:8px;flex-shrink:0}
@@ -847,13 +872,30 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
         // (без них браузер по спецификации SVG рисует svg в 300×150 px).
         function svgIcon(id, cls=''){return `<svg class="ico ${cls}" width="14" height="14" aria-hidden="true"><use href="#${id}"></use></svg>`;}
 
+        const _reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+        // Анимация числа 0 → target с easeOutQuart за durationMs.
+        // formatter(value) — как форматировать число (humanSize для байт, Math.round для счётчиков).
+        function animateNumber(el, target, durationMs, formatter){
+            if (_reduceMotion) { el.textContent = formatter(target); return; }
+            const start = performance.now();
+            el.textContent = formatter(0);
+            function step(now){
+                const t = Math.min(1, (now - start) / durationMs);
+                const eased = 1 - Math.pow(1 - t, 4);  // easeOutQuart
+                el.textContent = formatter(target * eased);
+                if (t < 1) requestAnimationFrame(step);
+            }
+            requestAnimationFrame(step);
+        }
+
         function renderStatusBar(){
             const el = document.getElementById('status-bar');
             const parts = [];
 
-            // Сводка по хранилищу — всегда показываем
-            parts.push(`<span class="pill accent">${svgIcon('ic-hdd')}<span class="num">${humanSize(TOTAL_SIZE)}</span></span>`);
-            parts.push(`<span class="pill muted">${TOTAL_FILES} файл(ов)</span>`);
+            // Сводка по хранилищу — всегда показываем. data-anim-* — якоря для counter-up.
+            parts.push(`<span class="pill accent">${svgIcon('ic-hdd')}<span class="num" data-anim="size">${humanSize(TOTAL_SIZE)}</span></span>`);
+            parts.push(`<span class="pill muted"><span class="num" data-anim="files">${TOTAL_FILES}</span> файл(ов)</span>`);
 
             if(MISSING.length > 0){
                 parts.push(`<span class="pill warn">${svgIcon('ic-warn')}отсутствует ${MISSING.length}</span>`);
@@ -881,6 +923,12 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
                 parts.push(`<span class="pill err">FATAL: ${escapeHtml(LAST_RUN.fatal)}</span>`);
             }
             el.innerHTML = parts.join(' ');
+
+            // Counter-up на тоталах (один раз при загрузке)
+            const sizeEl  = el.querySelector('[data-anim="size"]');
+            const filesEl = el.querySelector('[data-anim="files"]');
+            if (sizeEl)  animateNumber(sizeEl,  TOTAL_SIZE,  650, humanSize);
+            if (filesEl) animateNumber(filesEl, TOTAL_FILES, 650, n => Math.round(n).toString());
         }
 
         function renderMissing(){
@@ -1312,6 +1360,9 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
                     if(_latestIdxByFamily.has(idx)){
                         const lb=document.createElement('span');lb.className='latest-badge';lb.textContent='latest';
                         lb.title='Самая свежая версия в этом семействе';
+                        // Случайная отрицательная задержка через CSS-переменную (animation-delay
+                        // на parent'е не пропагируется на ::after, поэтому через --shimmer-delay).
+                        lb.style.setProperty('--shimmer-delay', (-Math.random() * 5) + 's');
                         cname.appendChild(lb);
                     }
                     cmeta.appendChild(cname);
