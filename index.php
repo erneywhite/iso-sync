@@ -173,6 +173,38 @@ if (is_dir($filesDir)) {
         }
     }
 }
+
+/* ===== Sparkline-данные для карточки «Хранилище» =====
+   Собираем все файлы (size + mtime), сортируем хронологически и строим
+   кумулятивный временной ряд. mtime у нас — upstream Last-Modified (см.
+   Updater::syncMtime), так что это реально «релизная история» зеркала,
+   а не время скачивания. Точек обычно ≤ десятков, ряд лёгкий — пушим в JS. */
+$storageDataPoints = [];
+$collectPoints = function(array $node) use (&$collectPoints, &$storageDataPoints) {
+    if (($node['type'] ?? null) === 'dir' && !empty($node['children'])) {
+        foreach ($node['children'] as $c) $collectPoints($c);
+    } elseif (isset($node['mtime'], $node['size'])) {
+        $storageDataPoints[] = ['ts' => (int)$node['mtime'], 'size' => (int)$node['size']];
+    }
+};
+foreach ($items as $it) $collectPoints($it);
+usort($storageDataPoints, fn($a, $b) => $a['ts'] <=> $b['ts']);
+
+$cumulative = 0;
+$storageSeries = [];
+foreach ($storageDataPoints as $p) {
+    $cumulative += $p['size'];
+    $storageSeries[] = ['ts' => $p['ts'], 'total' => $cumulative];
+}
+
+// Дельты по окнам (для подсказки под спарклайном)
+$nowTs    = time();
+$delta7d  = 0;
+$delta30d = 0;
+foreach ($storageDataPoints as $p) {
+    if ($p['ts'] >= $nowTs - 86400 * 7)  $delta7d  += $p['size'];
+    if ($p['ts'] >= $nowTs - 86400 * 30) $delta30d += $p['size'];
+}
 ?>
 <!doctype html>
 <html lang="ru">
@@ -485,6 +517,56 @@ h1{
     background:rgba(255,255,255,0.05);
     padding:1px 6px;border-radius:4px;
     font-family:var(--mono);font-size:11px;
+}
+
+/* ========== Sparkline на «Хранилище» ==========
+   Мини-график кумулятивного роста объёма по релизным датам файлов (mtime
+   = upstream Last-Modified). Окно — 90 дней (или весь ряд если он короче).
+   SVG-площадь с градиентной заливкой + линия + точка-конец с glow.
+   Высота фиксированная, ширина 100% (растягивается под карточку). */
+.sparkline{
+    margin-top:4px;
+    width:100%;height:36px;
+    display:block;
+    overflow:visible;  /* чтобы конечная точка с glow не подрезалась */
+}
+.sparkline .spark-area{
+    fill:url(#spark-grad);
+    opacity:.85;
+}
+.sparkline .spark-line{
+    fill:none;
+    stroke:var(--accent);
+    stroke-width:1.5;
+    stroke-linejoin:round;
+    stroke-linecap:round;
+    filter:drop-shadow(0 0 4px rgba(168,85,247,0.5));
+}
+.sparkline .spark-dot{
+    fill:var(--accent-2);
+    filter:drop-shadow(0 0 5px rgba(232,121,249,0.85));
+    animation:sparkPulse 2.4s ease-in-out infinite;
+}
+.sparkline.flat .spark-dot{animation:none}
+@keyframes sparkPulse{
+    0%,100%{r:2.2}
+    50%    {r:3.2}
+}
+.bento-card .card-delta{
+    font-size:10.5px;
+    color:var(--muted-2);
+    text-transform:uppercase;
+    letter-spacing:0.05em;
+    display:flex;align-items:center;gap:6px;
+    margin-top:-2px;
+}
+.bento-card .card-delta .delta-val{
+    color:var(--accent-2);
+    font-weight:700;
+    font-variant-numeric:tabular-nums;
+}
+@media (prefers-reduced-motion: reduce){
+    .sparkline .spark-dot{animation:none}
 }
 
 /* ========== Card ========== */
@@ -1090,6 +1172,9 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
         const HISTORY = <?php echo json_encode($history, JSON_UNESCAPED_UNICODE); ?> || [];
         const TOTAL_FILES = <?php echo (int)$totalFiles; ?>;
         const TOTAL_SIZE = <?php echo (int)$totalSize; ?>;
+        const STORAGE_SERIES = <?php echo json_encode($storageSeries, JSON_UNESCAPED_UNICODE); ?> || [];
+        const STORAGE_DELTA_7D  = <?php echo (int)$delta7d;  ?>;
+        const STORAGE_DELTA_30D = <?php echo (int)$delta30d; ?>;
         const webDir = '<?php echo addslashes($webDir); ?>';
 
         function escapeHtml(unsafe){return String(unsafe).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]||m));}
@@ -1163,6 +1248,52 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
             requestAnimationFrame(step);
         }
 
+        /* Sparkline для карточки «Хранилище».
+         * series: массив {ts: unix-sec, total: cumulative-bytes}.
+         * Рисуем кумулятивный график на 90-дневном окне (или весь ряд если он короче).
+         * Если данных < 2 точек — точку не рисуем (рост 0, без графика). */
+        function renderSparkline(host, series){
+            if (!host || !Array.isArray(series) || series.length < 2) return;
+            const W = 280, H = 36, padT = 4, padB = 4;
+            const now = Math.floor(Date.now() / 1000);
+            const windowSec = 86400 * 90;
+            const fromTs = Math.max(now - windowSec, series[0].ts);
+            // Точки, нормализованные в координаты SVG (viewBox W×H).
+            // Если все точки старше окна — показываем последние 8 (минимум контекста).
+            let pts = series.filter(p => p.ts >= fromTs);
+            if (pts.length < 2) pts = series.slice(-Math.min(8, series.length));
+            const minTs = pts[0].ts, maxTs = pts[pts.length - 1].ts;
+            const span = Math.max(1, maxTs - minTs);
+            const maxTotal = pts[pts.length - 1].total;
+            const minTotal = pts[0].total;
+            const range = Math.max(1, maxTotal - minTotal);
+
+            const coords = pts.map(p => {
+                const x = ((p.ts - minTs) / span) * (W - 4) + 2;
+                const y = H - padB - ((p.total - minTotal) / range) * (H - padT - padB);
+                return [x, y];
+            });
+            // Если в окне 1 точка после фильтра — рисуем плоскую линию по центру
+            const isFlat = (range <= 1);
+            const line = coords.map((c,i) => (i===0?'M':'L') + c[0].toFixed(1) + ',' + c[1].toFixed(1)).join(' ');
+            const area = line + ` L${coords[coords.length-1][0].toFixed(1)},${H} L${coords[0][0].toFixed(1)},${H} Z`;
+            const lastX = coords[coords.length-1][0];
+            const lastY = coords[coords.length-1][1];
+
+            host.innerHTML = `
+                <svg class="sparkline${isFlat ? ' flat' : ''}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+                    <defs>
+                        <linearGradient id="spark-grad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%"   stop-color="#a855f7" stop-opacity="0.45"/>
+                            <stop offset="100%" stop-color="#a855f7" stop-opacity="0"/>
+                        </linearGradient>
+                    </defs>
+                    <path class="spark-area" d="${area}"/>
+                    <path class="spark-line" d="${line}"/>
+                    <circle class="spark-dot" cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="2.6"/>
+                </svg>`;
+        }
+
         function renderStatusBar(){
             const el = document.getElementById('status-bar');
             const has = LAST_RUN && typeof LAST_RUN.total === 'number';
@@ -1170,6 +1301,15 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
             // ===== Карточка 1: Хранилище =====
             const missingChip = MISSING.length
                 ? `<span class="sep">•</span><span class="accent warn">${MISSING.length}</span><span>отсутствует</span>`
+                : '';
+            // Дельта за неделю/месяц как маленькая подпись над спарклайном.
+            // Если за оба окна нули — подпись не показываем (карточка остаётся компактной).
+            const deltaChip = (STORAGE_DELTA_30D > 0)
+                ? `<div class="card-delta">
+                       <span>прирост 30д</span>
+                       <span class="delta-val">+${humanSize(STORAGE_DELTA_30D)}</span>
+                       ${STORAGE_DELTA_7D > 0 ? `<span class="sep">•</span><span>7д</span><span class="delta-val">+${humanSize(STORAGE_DELTA_7D)}</span>` : ''}
+                   </div>`
                 : '';
             const card1 = `
                 <div class="bento-card">
@@ -1180,6 +1320,8 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
                         <span>файл(ов)</span>
                         ${missingChip}
                     </div>
+                    ${deltaChip}
+                    <div data-spark-host></div>
                 </div>`;
 
             // ===== Карточка 2: Состояние =====
@@ -1246,6 +1388,10 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
             const filesEl = el.querySelector('[data-anim="files"]');
             if (sizeEl)  animateNumber(sizeEl,  TOTAL_SIZE,  650, humanSize);
             if (filesEl) animateNumber(filesEl, TOTAL_FILES, 650, n => Math.round(n).toString());
+
+            // Sparkline на карточке «Хранилище»
+            const sparkHost = el.querySelector('[data-spark-host]');
+            if (sparkHost) renderSparkline(sparkHost, STORAGE_SERIES);
 
             // 3D-tilt на каждой bento-карточке
             el.querySelectorAll('.bento-card').forEach(c => attachTilt(c, 2.5));
