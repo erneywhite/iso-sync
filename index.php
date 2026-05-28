@@ -465,13 +465,16 @@ h1{
     border:none;
 }
 .bento-card{
-    background:linear-gradient(135deg, rgba(168,85,247,0.06), rgba(232,121,249,0.02));
+    /* Был backdrop-filter:blur(14px) saturate(140%) — даёт «стекло»-эффект,
+       но на Firefox/Mac кеш backdrop'а не инвалидируется правильно при
+       движении нижней нейбулы, оставляя trail-«отпечатки» формы карточки.
+       Заменили на чуть более плотный градиентный background — визуально
+       почти то же самое, но без compositor-багов. */
+    background:linear-gradient(135deg, rgba(40,20,60,0.5), rgba(30,15,45,0.4));
     border:1px solid var(--border-1);
     border-radius:var(--radius);
     padding:14px 16px;
     display:flex;flex-direction:column;gap:6px;
-    backdrop-filter:blur(14px) saturate(140%);
-    -webkit-backdrop-filter:blur(14px) saturate(140%);
     box-shadow:
         0 4px 24px -8px rgba(168,85,247,0.12),
         inset 0 1px 0 rgba(255,255,255,0.03);
@@ -490,7 +493,7 @@ h1{
 }
 .bento-card:hover{
     border-color:rgba(168,85,247,0.28);
-    background:linear-gradient(135deg, rgba(168,85,247,0.09), rgba(232,121,249,0.035));
+    background:linear-gradient(135deg, rgba(60,30,90,0.55), rgba(50,25,75,0.45));
     box-shadow:
         0 6px 32px -8px rgba(168,85,247,0.25),
         inset 0 1px 0 rgba(255,255,255,0.05);
