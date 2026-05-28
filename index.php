@@ -975,23 +975,40 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
             return String(a).localeCompare(String(b), undefined, {numeric:true, sensitivity:'base'});
         }
 
-        // "Ключ семейства" по имени файла: версионные токены (только цифры + . -)
-        // маскируются в '*'. Файлы с одним ключом = одно семейство → у новейшего
-        // ставим бейдж latest. Примеры:
+        // "Ключ семейства" по имени файла: версионные токены маскируются в '*'.
+        // Файлы с одним ключом = одно семейство.
+        //
+        // Что считается версией: токен из цифр со .- разделителями (7.3, 4.2-1, 9.2, 22.04).
+        // Что НЕ считается: диапазон годов вида YYYY-YYYY (например 2012-2022 у langpaks_win) —
+        // это не "версия продукта", а исторический артефакт.
+        //
+        // Примеры:
         //   ProxmoxVE_9.2.iso             → ProxmoxVE_*.iso
         //   Proxmox_BackUP_4.2.iso        → Proxmox_BackUP_*.iso
         //   Windows_Server_2025_ru.iso    → Windows_Server_*_ru.iso  (≠ _en — разные семейства)
         //   Windows_11_ru.iso             → Windows_*_ru.iso         (группируется с Windows_10_ru)
-        //   WinPE.iso                     → WinPE.iso                (нет версий — singleton)
-        //   Ubuntu_22.04.iso              → Ubuntu_*.iso
+        //   WinPE.iso                     → WinPE.iso                (нет версий вообще)
+        //   langpaks_win_2012-2022.iso    → langpaks_win_2012-2022.iso (range годов — не версия)
+        //   QEMU_virtio-win-latest.iso    → QEMU_virtio-win-latest.iso (нет версий)
         function familyKey(name){
             const dot = name.lastIndexOf('.');
             const base = dot > 0 ? name.slice(0, dot) : name;
             const ext  = dot > 0 ? name.slice(dot)    : '';
-            const masked = base.split('_').map(tok =>
-                /^\d+(?:[.\-]\d+)*$/.test(tok) ? '*' : tok
-            ).join('_');
-            return masked + ext;
+            return base.split('_').map(tok => {
+                if (/^\d{4}-\d{4}$/.test(tok)) return tok;            // range годов — не версия
+                return /^\d+(?:[.\-]\d+)*$/.test(tok) ? '*' : tok;
+            }).join('_') + ext;
+        }
+
+        // Есть ли в имени файла версионный токен? Используется для решения,
+        // даём ли latest-бейдж singleton'ам: с версией ("Proxmox_BackUP_4.2") — да,
+        // без версии ("WinPE", "QEMU_virtio-win-latest") — нет.
+        function hasVersionToken(name){
+            const dot = name.lastIndexOf('.');
+            const base = dot > 0 ? name.slice(0, dot) : name;
+            return base.split('_').some(tok =>
+                !/^\d{4}-\d{4}$/.test(tok) && /^\d+(?:[.\-]\d+)*$/.test(tok)
+            );
         }
 
         function showToast(t){
@@ -1094,15 +1111,29 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
                 const childrenWrap=document.createElement('div');childrenWrap.className='children';childrenWrap.style.display='none';childrenWrap.style.maxHeight='0px';
 
                 // Для каждого семейства (familyKey) находим самый свежий файл — он получит latest-бейдж.
-                // Дети уже отсортированы descending по натуральному имени, поэтому первое вхождение
-                // каждого ключа — это и есть новейший в семействе.
+                // Правила:
+                //   - семейство из ≥2 файлов → новейший (первый в descending-сортировке) badge'ом
+                //   - singleton с версионным токеном (Proxmox_BackUP_4.2 — это "единственная версия
+                //     этого продукта") → тоже badge
+                //   - singleton без версии (WinPE.iso, QEMU_virtio-win-latest.iso, langpaks_win_2012-2022.iso)
+                //     → НЕ показываем latest: не с чем сравнивать, и это утилиты/архивы, не релизы
                 const _latestIdxByFamily = (() => {
-                    const seen = new Map();
+                    const firstIdx = new Map();
+                    const size = new Map();
                     (dir.children||[]).forEach((f, i) => {
                         const k = familyKey(f.name);
-                        if (!seen.has(k)) seen.set(k, i);
+                        if (!firstIdx.has(k)) firstIdx.set(k, i);
+                        size.set(k, (size.get(k) || 0) + 1);
                     });
-                    return new Set(seen.values());
+                    const out = new Set();
+                    for (const [k, idx] of firstIdx) {
+                        const cnt = size.get(k) || 0;
+                        const file = (dir.children||[])[idx];
+                        if (cnt >= 2 || (cnt === 1 && hasVersionToken(file.name))) {
+                            out.add(idx);
+                        }
+                    }
+                    return out;
                 })();
 
                 (dir.children||[]).forEach((f,idx)=>{
