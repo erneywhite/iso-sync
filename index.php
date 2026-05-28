@@ -34,6 +34,72 @@ if (is_file($lastRunPath)) {
     }
 }
 
+/**
+ * История значимых событий из logs/update.log: что обновилось, что зачистилось,
+ * что не удалось скачать. Читает последние 256 KB лога (хвост) — этого хватает
+ * на сотни событий, парсит JSON-lines, фильтрует и возвращает последние N.
+ *
+ * Намеренно НЕ показываем server-path (privacy) — только имена файлов.
+ *
+ * @return list<array{ts:string,kind:string,file:string,extra?:string}>
+ */
+function loadHistory(string $logsDir, int $maxEntries = 20): array
+{
+    $log = $logsDir . '/update.log';
+    if (!is_file($log)) return [];
+    $size = @filesize($log);
+    if ($size === false || $size === 0) return [];
+
+    $read = (int)min($size, 262144);  // последние 256 KB
+    $fp = @fopen($log, 'rb');
+    if ($fp === false) return [];
+    @fseek($fp, -$read, SEEK_END);
+    $data = @fread($fp, $read);
+    @fclose($fp);
+    if (!is_string($data)) return [];
+
+    $lines = explode("\n", $data);
+    // Если читали из середины файла — первая строка может быть обрезана, отбросим
+    if ($size > $read) array_shift($lines);
+
+    $events = [];
+    foreach (array_reverse($lines) as $line) {
+        $line = trim($line);
+        if ($line === '') continue;
+        $rec = @json_decode($line, true);
+        if (!is_array($rec)) continue;
+        $event = $rec['event'] ?? null;
+
+        if ($event === 'file_updated') {
+            // Имя файла: предпочтительно local_name (добавлено в Updater), иначе извлечь из сообщения
+            $file = (string)($rec['local_name'] ?? '');
+            if ($file === '' && preg_match('/^Файл обновлён:\s*(.+)$/u', (string)($rec['message'] ?? ''), $m)) {
+                $file = trim($m[1]);
+            }
+            if ($file === '') continue;
+            $events[] = ['ts' => (string)($rec['ts'] ?? ''), 'kind' => 'updated', 'file' => $file];
+        } elseif ($event === 'cleanup_old') {
+            $events[] = [
+                'ts'    => (string)($rec['ts'] ?? ''),
+                'kind'  => 'cleanup',
+                'file'  => (string)($rec['removed'] ?? '?'),
+                'extra' => (string)($rec['family'] ?? ''),
+            ];
+        } elseif ($event === 'download_giveup') {
+            // URL содержит upstream-хост (публично — не страшно), показываем basename
+            $u = (string)($rec['url'] ?? '');
+            $name = basename((string)parse_url($u, PHP_URL_PATH));
+            if ($name === '' || $name === false) $name = '?';
+            $events[] = ['ts' => (string)($rec['ts'] ?? ''), 'kind' => 'failed', 'file' => $name];
+        }
+
+        if (count($events) >= $maxEntries) break;
+    }
+    return $events;
+}
+
+$history = loadHistory($logsDir);
+
 // Список из конфига для подсчёта отсутствующих
 $missing = [];
 if (is_file($configPath)) {
@@ -529,6 +595,40 @@ h1{
 .missing-block .row{background:rgba(255,255,255,0.015)}
 .missing-block .row:hover{transform:none;background:rgba(255,255,255,0.02)}
 
+/* ========== History block (admin) ========== */
+.history-block{
+    margin-top:14px;
+    padding:12px 16px;
+    border-radius:var(--radius);
+    background:var(--surface-1);
+    border:1px solid var(--border-1);
+}
+.history-block .hist-header{
+    display:flex;align-items:center;gap:10px;
+    cursor:pointer;user-select:none;
+    color:var(--muted);
+    font-size:13px;font-weight:600;
+}
+.history-block .hist-header:hover{color:var(--text)}
+.history-block .hist-header .toggle-arrow{transition:transform 220ms ease}
+.history-block.open .hist-header .toggle-arrow{transform:rotate(180deg)}
+.history-block .hist-list{
+    margin-top:0;
+    max-height:0;
+    overflow:hidden;
+    transition:max-height 260ms cubic-bezier(.2,.9,.2,1);
+    display:flex;flex-direction:column;gap:6px;
+}
+.history-block.open .hist-list{max-height:600px;margin-top:10px;overflow-y:auto}
+.hist-row{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:8px;font-size:12.5px;background:rgba(255,255,255,0.01)}
+.hist-row .hist-ts{color:var(--muted-2);font-family:var(--mono);font-size:11.5px;white-space:nowrap}
+.hist-row .hist-kind{font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;text-transform:uppercase;letter-spacing:0.04em;flex-shrink:0}
+.hist-row .hist-kind.updated{color:var(--ok);background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.2)}
+.hist-row .hist-kind.cleanup{color:var(--muted);background:rgba(255,255,255,0.04);border:1px solid var(--border-1)}
+.hist-row .hist-kind.failed {color:var(--err);background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.25)}
+.hist-row .hist-file{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.hist-row .hist-extra{color:var(--muted-2);font-size:11px;margin-left:auto;white-space:nowrap}
+
 /* ========== Animations ========== */
 @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 @keyframes shimmer{to{background-position:-200% 0}}
@@ -610,6 +710,15 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
                 </h2>
                 <div id="missing-list" class="list"></div>
             </div>
+
+            <div id="history-block" class="history-block" style="display:none">
+                <div class="hist-header" id="hist-toggle">
+                    <svg class="ico" aria-hidden="true"><use href="#ic-clock"></use></svg>
+                    <span id="hist-title">История обновлений</span>
+                    <span class="toggle-arrow" style="margin-left:auto">▾</span>
+                </div>
+                <div id="hist-list" class="hist-list"></div>
+            </div>
         </div>
     </div>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -618,6 +727,7 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
         const FILES = <?php echo json_encode($items, JSON_UNESCAPED_UNICODE); ?> || [];
         const MISSING = <?php echo json_encode($missing, JSON_UNESCAPED_UNICODE); ?> || [];
         const LAST_RUN = <?php echo json_encode($lastRun, JSON_UNESCAPED_UNICODE); ?>;
+        const HISTORY = <?php echo json_encode($history, JSON_UNESCAPED_UNICODE); ?> || [];
         const TOTAL_FILES = <?php echo (int)$totalFiles; ?>;
         const TOTAL_SIZE = <?php echo (int)$totalSize; ?>;
         const webDir = '<?php echo addslashes($webDir); ?>';
@@ -1101,8 +1211,51 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
             render(items);
         }
 
+        function renderHistory(){
+            const block = document.getElementById('history-block');
+            const list  = document.getElementById('hist-list');
+            const title = document.getElementById('hist-title');
+            list.innerHTML = '';
+            if(!Array.isArray(HISTORY) || HISTORY.length === 0){
+                block.style.display = 'none';
+                return;
+            }
+            block.style.display = '';
+            title.textContent = `История обновлений (${HISTORY.length})`;
+
+            HISTORY.forEach(e => {
+                const row = document.createElement('div'); row.className = 'hist-row';
+                const ts  = document.createElement('span'); ts.className = 'hist-ts';
+                // компактная дата: ДД.ММ HH:MM
+                try {
+                    const d = new Date(e.ts);
+                    ts.textContent = d.toLocaleString('ru-RU', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+                } catch(_) { ts.textContent = e.ts; }
+                const kind = document.createElement('span'); kind.className = 'hist-kind ' + e.kind;
+                kind.textContent = e.kind === 'updated' ? 'обновлено'
+                                : e.kind === 'cleanup' ? 'удалено'
+                                : e.kind === 'failed'  ? 'не скачано'
+                                : e.kind;
+                const file = document.createElement('span'); file.className = 'hist-file';
+                file.textContent = e.file || '?';
+                row.appendChild(ts); row.appendChild(kind); row.appendChild(file);
+                if(e.extra){
+                    const ex = document.createElement('span'); ex.className = 'hist-extra';
+                    ex.textContent = e.extra;
+                    row.appendChild(ex);
+                }
+                list.appendChild(row);
+            });
+
+            // Сворачиваем/разворачиваем по клику на хедер
+            document.getElementById('hist-toggle').addEventListener('click', ()=>{
+                block.classList.toggle('open');
+            });
+        }
+
         renderStatusBar();
         renderMissing();
+        renderHistory();
         createSkeleton(6);
         setTimeout(()=>apply(),120);
 

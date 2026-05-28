@@ -343,6 +343,7 @@ final class Updater
         $this->logger->info("Файл обновлён: " . basename($localPath), [
             'event'        => 'file_updated',
             'file'         => $entry->localName,
+            'local_name'   => basename($localPath),  // безопасно для UI: только имя файла, без server-path
             'local_path'   => $localPath,
             'actual_size'  => $result['actual_size'],
         ]);
