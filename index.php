@@ -365,6 +365,41 @@ h1{
         0 0 0 1px rgba(86,193,255,0.06),
         0 0 22px -10px rgba(86,193,255,0.45);
 }
+
+/* ========== Бренд-цвета дистрибутивов ==========
+   RGB задаётся как тройка чисел через запятую, чтобы можно было использовать
+   в rgba() с нужной альфой. Класс .has-distro на .row активирует все эффекты;
+   .distro-XXX задаёт конкретный цвет. CSS-переменная каскадирует на .thumb. */
+.distro-debian    { --distro-rgb: 194, 24, 91 }     /* Debian red */
+.distro-ubuntu    { --distro-rgb: 233, 84, 32 }     /* Ubuntu orange */
+.distro-almalinux { --distro-rgb: 10, 153, 112 }    /* AlmaLinux green */
+.distro-centos    { --distro-rgb: 147, 34, 121 }    /* CentOS purple */
+.distro-proxmox   { --distro-rgb: 229, 112, 0 }     /* Proxmox orange */
+.distro-arch      { --distro-rgb: 23, 147, 209 }    /* Arch blue */
+.distro-windows   { --distro-rgb: 0, 120, 212 }     /* Windows blue */
+.distro-fedora    { --distro-rgb: 60, 110, 180 }    /* Fedora blue (virtio) */
+
+/* Тонкая полоска слева у thumb — мгновенная идентификация даже без чтения имени */
+.row.has-distro .thumb{
+    box-shadow:
+        inset 3px 0 0 rgba(var(--distro-rgb), 0.85),
+        inset 0 0 0 1px rgba(255,255,255,0.04);
+}
+/* Папочный thumb имеет drop shadow — сохраняем его + добавляем полоску */
+.row.has-distro .thumb.folder{
+    box-shadow:
+        inset 3px 0 0 rgba(var(--distro-rgb), 0.85),
+        0 4px 12px rgba(86,193,255,0.2);
+}
+
+/* На hover вместо общего cyan-glow строка светится в цвет своего дистрибутива */
+.row.has-distro:hover{
+    border-color:rgba(var(--distro-rgb), 0.22);
+    box-shadow:
+        0 8px 24px rgba(2,8,23,0.4),
+        0 0 0 1px rgba(var(--distro-rgb), 0.08),
+        0 0 22px -10px rgba(var(--distro-rgb), 0.45);
+}
 .row:focus{outline:none;border-color:rgba(86,193,255,0.35);box-shadow:0 0 0 3px rgba(86,193,255,0.12)}
 .row.dir-row{cursor:pointer}
 .row.menu-open,.row.menu-open:hover{transform:none!important}
@@ -896,6 +931,25 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
             return `<svg class="icon" width="24" height="24" aria-hidden="true"><use href="#${id}"></use></svg>`;
         }
 
+        // Определяет дистрибутив по имени файла/папки для бренд-окраски строки.
+        // Возвращает класс-суффикс (debian/ubuntu/...) или null.
+        function detectDistro(name){
+            const n = name.toLowerCase();
+            if (n.startsWith('debian'))    return 'debian';
+            if (n.startsWith('ubuntu'))    return 'ubuntu';
+            if (n.startsWith('almalinux') || n.startsWith('alma')) return 'almalinux';
+            if (n.startsWith('centos'))    return 'centos';
+            if (n.startsWith('proxmox'))   return 'proxmox';
+            if (n.startsWith('arch'))      return 'arch';
+            if (n.startsWith('windows') || n.startsWith('winpe') || n.startsWith('langpaks_win')) return 'windows';
+            if (n.startsWith('qemu') || n.includes('virtio')) return 'fedora';
+            return null;
+        }
+        function applyDistroClass(elem, name){
+            const d = detectDistro(name);
+            if (d) elem.classList.add('has-distro', 'distro-' + d);
+        }
+
         function copyToClipboard(text){
             if(navigator.clipboard){
                 navigator.clipboard.writeText(text).then(()=>showToast('Скопировано в буфер'));
@@ -1131,6 +1185,7 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
 
             dirs.forEach(dir=>{
                 const row=document.createElement('div');row.className='row dir-row';row.setAttribute('role','listitem');row.tabIndex=0;
+                applyDistroClass(row, dir.name);
                 const thumb=document.createElement('div');thumb.className='thumb folder';thumb.innerHTML=fileIcon(dir.name,true);
                 const meta=document.createElement('div');meta.className='meta';
                 const name=document.createElement('div');name.className='filename';
@@ -1195,6 +1250,7 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
 
                 (dir.children||[]).forEach((f,idx)=>{
                     const crow=document.createElement('div');crow.className='row';crow.tabIndex=0;
+                    applyDistroClass(crow, f.name);
                     const cthumb=document.createElement('div');cthumb.className='thumb';cthumb.innerHTML=fileIcon(f.name,false);
                     const cmeta=document.createElement('div');cmeta.className='meta';
                     const cname=document.createElement('div');cname.className='filename';
@@ -1263,6 +1319,7 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
 
             files.forEach(f=>{
                 const row=document.createElement('div');row.className='row';row.setAttribute('role','listitem');row.tabIndex=0;
+                applyDistroClass(row, f.name);
                 const thumb=document.createElement('div');thumb.className='thumb';thumb.innerHTML=fileIcon(f.name,false);
                 const meta=document.createElement('div');meta.className='meta';
                 const name=document.createElement('div');name.className='filename';
