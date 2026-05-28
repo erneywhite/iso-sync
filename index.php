@@ -359,8 +359,11 @@ h1{
 .row:hover{
     transform:translateY(-2px);
     background:var(--surface-2);
-    border-color:var(--border-2);
-    box-shadow:0 8px 24px rgba(2,8,23,0.4);
+    border-color:rgba(86,193,255,0.22);
+    box-shadow:
+        0 8px 24px rgba(2,8,23,0.4),
+        0 0 0 1px rgba(86,193,255,0.06),
+        0 0 22px -10px rgba(86,193,255,0.45);
 }
 .row:focus{outline:none;border-color:rgba(86,193,255,0.35);box-shadow:0 0 0 3px rgba(86,193,255,0.12)}
 .row.dir-row{cursor:pointer}
@@ -633,6 +636,37 @@ h1{
 @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 @keyframes shimmer{to{background-position:-200% 0}}
 
+/* Stagger-вход строк при первичной загрузке: каждая строка появляется со сдвигом
+   ~25 мс через JS-инлайн animation-delay. После первого рендера флаг сбрасывается
+   и при поиске/фильтрации стаггера нет (чтобы не лагало). */
+.row-stagger{animation:rowIn 0.42s cubic-bezier(.2,.9,.2,1) backwards}
+@keyframes rowIn{
+    from{opacity:0;transform:translateY(10px)}
+    to{opacity:1;transform:translateY(0)}
+}
+
+/* Inline-фидбэк копирования: маленький "✓ скопировано" появляется прямо рядом
+   с хэшем на ~1 сек после клика. Toast снизу всё равно остаётся (для accessibility). */
+.inline-check{
+    display:inline-flex;align-items:center;gap:4px;
+    margin-left:6px;
+    padding:2px 8px;
+    border-radius:999px;
+    background:rgba(74,222,128,0.15);
+    border:1px solid rgba(74,222,128,0.3);
+    color:var(--ok);
+    font-size:11px;font-weight:600;
+    vertical-align:middle;
+    animation:inlineCheckIn .22s cubic-bezier(.2,.9,.2,1);
+    transition:opacity .25s, transform .25s;
+}
+.inline-check.fading{opacity:0;transform:translateX(6px) scale(.9)}
+.inline-check svg{width:11px;height:11px;flex-shrink:0}
+@keyframes inlineCheckIn{
+    from{opacity:0;transform:scale(.85)}
+    to{opacity:1;transform:scale(1)}
+}
+
 /* ========== Highlight (search) ========== */
 mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border-radius:3px}
 
@@ -904,8 +938,29 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
                 copyToClipboard(hashValue.replace('sha256:', ''));
                 span.classList.add('copied');
                 setTimeout(()=>span.classList.remove('copied'),350);
+                showInlineCheck(span);   // мини-фидбэк рядом с хэшем
             });
             return span;
+        }
+
+        // Маленькая "✓ скопировано" пилюля рядом с элементом на ~1 сек.
+        // Появляется в той же строке (parent), потом плавно уезжает.
+        function showInlineCheck(target){
+            const parent = target.parentElement;
+            if (!parent) return;
+            // Снести предыдущую, если ещё висит
+            const old = parent.querySelector('.inline-check');
+            if (old) old.remove();
+
+            const c = document.createElement('span');
+            c.className = 'inline-check';
+            c.innerHTML = svgIcon('ic-check') + 'скопировано';
+            target.insertAdjacentElement('afterend', c);
+
+            setTimeout(() => {
+                c.classList.add('fading');
+                setTimeout(() => c.remove(), 300);
+            }, 900);
         }
 
         function buildSubLine(f){
@@ -969,6 +1024,8 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
               searchInput=document.getElementById('search'),
               toast=document.getElementById('toast');
         let lastQuery = '';
+        // Только при первой отрисовке делаем stagger; при поиске/фильтрации — мгновенно
+        let isInitialRender = true;
 
         // Натуральное сравнение (учитывает числа: 9 < 10, 22.04 < 26.04)
         function natCmp(a, b){
@@ -1232,6 +1289,21 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
                     if(e.key===' '){e.preventDefault(); const cb = row.querySelector('.copy-toggle'); if(cb) cb.click();}
                 });
             });
+
+            // Stagger-вход для первых N top-level строк только при первой отрисовке.
+            // :scope > .row — берём только прямых детей listEl (dir-row и top-level file-row),
+            // не вложенных в .children (там свои анимации раскрытия папки).
+            if (isInitialRender) {
+                let i = 0;
+                listEl.querySelectorAll(':scope > .row').forEach(row => {
+                    if (i < 15) {
+                        row.style.animationDelay = (i * 28) + 'ms';
+                        row.classList.add('row-stagger');
+                        i++;
+                    }
+                });
+                isInitialRender = false;
+            }
         }
 
         document.addEventListener('click',function(e){
