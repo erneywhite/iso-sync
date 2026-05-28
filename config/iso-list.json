@@ -2,29 +2,34 @@
     "$schema": "./iso-list.schema.json",
     "_comment": "Список ISO-образов для автосинхронизации. См. README.md / config/iso-list.schema.json для описания полей.",
     "files": {
+        "_comment_debian": "GPG-блоки требуют импорта Debian Release ключей в системный gpg keyring (см. README, секция 'GPG'). Без ключей загрузки будут падать на 'GPG verify failed' — выключите блок gpg в этих записях или импортируйте ключи.",
         "Debian_11.iso": {
             "local_subdir": "Debian",
             "url_dir": "https://cdimage.debian.org/cdimage/archive/11.11.0/amd64/iso-dvd/",
-            "remote_name": "debian-11.11.0-amd64-DVD-1.iso"
+            "remote_name": "debian-11.11.0-amd64-DVD-1.iso",
+            "gpg": { "signature_url": "https://cdimage.debian.org/cdimage/archive/11.11.0/amd64/iso-dvd/SHA256SUMS.sign" }
         },
         "Debian_12.iso": {
             "local_subdir": "Debian",
             "url_dir": "https://cdimage.debian.org/cdimage/archive/12.12.0/amd64/iso-dvd/",
-            "remote_name": "debian-12.12.0-amd64-DVD-1.iso"
+            "remote_name": "debian-12.12.0-amd64-DVD-1.iso",
+            "gpg": { "signature_url": "https://cdimage.debian.org/cdimage/archive/12.12.0/amd64/iso-dvd/SHA256SUMS.sign" }
         },
         "Debian_13.iso": {
             "local_subdir": "Debian",
             "url_dir": "https://cdimage.debian.org/cdimage/archive/13.1.0/amd64/iso-dvd/",
-            "remote_name": "debian-13.1.0-amd64-DVD-1.iso"
+            "remote_name": "debian-13.1.0-amd64-DVD-1.iso",
+            "gpg": { "signature_url": "https://cdimage.debian.org/cdimage/archive/13.1.0/amd64/iso-dvd/SHA256SUMS.sign" }
         },
 
-        "_comment_ubuntu": "Discovery-режим: скрипт перебирает папки по диапазону 22.04..30.04, для каждой пробует SHA256SUMS, существующие обрабатывает как family. Когда выйдет 26.04 / 28.04 — подхватятся автоматом без правок конфига. step=1 включает интерим-релизы (.04 в нечётные годы); поставь step=2 чтобы тянуть только LTS.",
+        "_comment_ubuntu": "Discovery-режим: скрипт перебирает папки по диапазону 22.04..30.04, для каждой пробует SHA256SUMS, существующие обрабатывает как family. step=1 включает интерим-релизы (.04 в нечётные годы); поставь step=2 чтобы тянуть только LTS. GPG: {folder} подменяется в signature_url при материализации под-записи. Требуется импорт Ubuntu CD Image Automatic Signing Key (см. README).",
         "ubuntu-lts": {
             "local_subdir":        "Ubuntu",
             "url_template":        "https://releases.ubuntu.com/{folder}/",
             "folder_enum":         { "from": 22, "to": 30, "step": 1, "format": "{0}.04" },
             "remote_pattern":      "/^ubuntu-{folder}(?:\\.\\d+)?-live-server-amd64\\.iso$/",
-            "local_name_template": "Ubuntu_{folder}.iso"
+            "local_name_template": "Ubuntu_{folder}.iso",
+            "gpg": { "signature_url": "https://releases.ubuntu.com/{folder}/SHA256SUMS.gpg" }
         },
 
         "CentOS_7.iso": {

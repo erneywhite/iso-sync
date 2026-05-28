@@ -100,8 +100,8 @@ iso-sync/
 
 | Дистрибутив     | Версии                    | Проверка SHA256 | Источник                          |
 |-----------------|---------------------------|--------------|-----------------------------------|
-| Debian          | 11, 12, 13                | ✅            | cdimage.debian.org                |
-| Ubuntu          | все `.04` (discovery)     | ✅            | releases.ubuntu.com               |
+| Debian          | 11, 12, 13                | ✅ + GPG       | cdimage.debian.org                |
+| Ubuntu          | все `.04` (discovery)     | ✅ + GPG       | releases.ubuntu.com               |
 | CentOS          | 7                         | ✅            | mirror.yandex.ru                  |
 | CentOS Stream   | 9, 10                     | ✅ (`latest`) | ftp.byfly.by                      |
 | AlmaLinux       | 8, 9, 10                  | ✅            | raw.repo.almalinux.org            |
@@ -412,25 +412,59 @@ aria2c не найден, использую cURL-Downloader (apt install aria2 
 
 Сертификаты проверяются по умолчанию (`CURLOPT_SSL_VERIFYPEER = true`). Если конкретное зеркало отдаёт битый/самоподписанный сертификат, добавьте `"insecure_ssl": true` для этой записи в конфиге — это локальный опт-аут, остальные записи продолжают проверять SSL строго.
 
-### GPG (опционально)
+### GPG-верификация SHA256SUMS
 
-Подпись на `SHA256SUMS` нивелирует риск подмены контрольных сумм MITM-атакой. Чтобы включить:
+Подпись на `SHA256SUMS` нивелирует риск MITM-подмены контрольных сумм (тот, кто подменил бы хэш, должен ещё и пересоздать подпись валидным ключом — что без приватки невозможно). В конфиге уже включены `gpg`-блоки для **Debian** и **Ubuntu** — но они работают только если на сервере импортированы соответствующие ключи. Без ключей загрузка этих записей будет падать с `GPG verify failed` — либо импортируйте ключи, либо удалите/закомментируйте блоки `gpg` в `config/iso-list.json`.
 
-1. Установите `gpg` (обычно уже есть на серверах: `apt install gnupg`)
-2. Импортируйте ключ подписанта:
-   ```bash
-   # пример для Debian
-   gpg --keyserver keyserver.ubuntu.com --recv-keys DF9B9C49EAA9298432589D76DA87E80D6294BE9B
-   ```
-3. Добавьте в запись конфига блок `gpg`:
-   ```json
-   "gpg": {
-       "signature_url":   "https://cdimage.debian.org/.../SHA256SUMS.sign",
-       "key_fingerprint": "DF9B9C49EAA9298432589D76DA87E80D6294BE9B"
-   }
-   ```
+#### Импорт ключей (один раз)
 
-При несовпадении подписи запись помечается `failed`, файл не скачивается.
+```bash
+# 1) Проверьте, что gpg установлен
+apt install gnupg
+
+# 2) Debian: импорт текущих Release/Archive ключей с keyring.debian.org
+#    Актуальный список fingerprint'ов сверяйте на https://www.debian.org/CD/verify
+#    На момент написания (Debian 11/12/13):
+gpg --keyserver keyserver.ubuntu.com --recv-keys \
+    DF9B9C49EAA9298432589D76DA87E80D6294BE9B \
+    DC30D7C23CBBABEE \
+    B7619EB16E91369B68B0E312EF0F382A1A7B6500
+
+# 3) Ubuntu: импорт Ubuntu CD Image Automatic Signing Key
+gpg --keyserver keyserver.ubuntu.com --recv-keys \
+    843938DF228D22F7B3742BC0D94AA3F0EFE21092 \
+    D94AA3F0EFE21092
+
+# 4) Проверка: ключи импортированы?
+gpg --list-keys
+```
+
+> Fingerprint'ы могут устаревать (Debian обновляет ключи каждый релиз). Если `gpg --verify` падает с "Unknown signing key" — найдите актуальный отпечаток на странице Verify соответствующего проекта и импортируйте свежий.
+
+#### Запуск под `www` (не root)
+
+GPG читает ключи из `$HOME/.gnupg`. Если cron запускает `update_iso.php` от пользователя `www` (типично для aaPanel), ключи надо импортировать **под этим пользователем**:
+
+```bash
+su -s /bin/bash www -c 'gpg --keyserver keyserver.ubuntu.com --recv-keys 843938DF228D22F7B3742BC0D94AA3F0EFE21092'
+```
+
+#### Проверка работы
+
+После импорта запустите `php update_iso.php`. В логе для Debian/Ubuntu записей должна появиться строка `GPG signature OK (fingerprint XXX...)`. Если видите `GPG verify FAILED` — ключ не импортирован под нужным пользователем или fingerprint устарел.
+
+#### Опциональный жёсткий чек fingerprint'а
+
+По умолчанию GPG-блок принимает подпись любым импортированным ключом. Чтобы дополнительно гарантировать, что подписало именно **то** имя — добавьте `key_fingerprint`:
+
+```jsonc
+"gpg": {
+    "signature_url":   "https://cdimage.debian.org/.../SHA256SUMS.sign",
+    "key_fingerprint": "DF9B9C49EAA9298432589D76DA87E80D6294BE9B"
+}
+```
+
+При несовпадении запись помечается `failed`, файл не скачивается.
 
 ---
 

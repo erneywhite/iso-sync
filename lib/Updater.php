@@ -467,7 +467,10 @@ final class Updater
             insecureSsl:                  $entry->insecureSsl,
             latestPattern:                $entry->latestPattern,
             checksumFiles:                $entry->checksumFiles,
-            gpgSignatureUrl:              $entry->gpgSignatureUrl,
+            // {folder} в signature_url тоже подменяем (для GPG на discovery-записях)
+            gpgSignatureUrl:              $entry->gpgSignatureUrl !== null
+                ? str_replace('{folder}', $folder, $entry->gpgSignatureUrl)
+                : null,
             gpgKeyFingerprint:            $entry->gpgKeyFingerprint,
             remotePattern:                str_replace('{folder}', preg_quote($folder, '/'), $entry->remotePattern ?? ''),
             localNameTemplate:            str_replace('{folder}', $folder, $entry->localNameTemplate ?? ''),
