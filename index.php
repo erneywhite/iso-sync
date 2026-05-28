@@ -296,8 +296,12 @@ body::before{
     to  {transform:translate3d(35px,25px,0)   scale(1.05)}
 }
 
-/* Subtle grain/noise — SVG-шум через data-URI, накладывается mix-blend-mode'ом
-   поверх mesh. Inline-размер ~1 KB. Без анимации, без CPU — статичная текстура. */
+/* Subtle grain/noise — SVG-шум через data-URI поверх mesh. Inline-размер ~1 KB.
+   Был mix-blend-mode:overlay, но на Firefox/Mac (Bugzilla #1786502 и др.)
+   blend-mode поверх анимированного нижнего слоя оставляет trail-артефакты
+   при composite-сбое. Теперь — простая полупрозрачная накладка, грейн чуть
+   менее «вплавленный» в фон, но визуально разница минимальная, зато
+   композитор не дёргается. */
 body::after{
     content:'';
     position:fixed;
@@ -305,8 +309,7 @@ body::after{
     z-index:-1;
     pointer-events:none;
     background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' seed='7' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.85  0 0 0 0 0.7  0 0 0 0 1  0 0 0 0.55 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
-    opacity:0.07;
-    mix-blend-mode:overlay;
+    opacity:0.05;
 }
 
 @media (prefers-reduced-motion: reduce){
