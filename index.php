@@ -975,6 +975,25 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
             return String(a).localeCompare(String(b), undefined, {numeric:true, sensitivity:'base'});
         }
 
+        // "Ключ семейства" по имени файла: версионные токены (только цифры + . -)
+        // маскируются в '*'. Файлы с одним ключом = одно семейство → у новейшего
+        // ставим бейдж latest. Примеры:
+        //   ProxmoxVE_9.2.iso             → ProxmoxVE_*.iso
+        //   Proxmox_BackUP_4.2.iso        → Proxmox_BackUP_*.iso
+        //   Windows_Server_2025_ru.iso    → Windows_Server_*_ru.iso  (≠ _en — разные семейства)
+        //   Windows_11_ru.iso             → Windows_*_ru.iso         (группируется с Windows_10_ru)
+        //   WinPE.iso                     → WinPE.iso                (нет версий — singleton)
+        //   Ubuntu_22.04.iso              → Ubuntu_*.iso
+        function familyKey(name){
+            const dot = name.lastIndexOf('.');
+            const base = dot > 0 ? name.slice(0, dot) : name;
+            const ext  = dot > 0 ? name.slice(dot)    : '';
+            const masked = base.split('_').map(tok =>
+                /^\d+(?:[.\-]\d+)*$/.test(tok) ? '*' : tok
+            ).join('_');
+            return masked + ext;
+        }
+
         function showToast(t){
             toast.innerHTML = svgIcon('ic-check') + escapeHtml(t);
             toast.classList.add('show');
@@ -1073,6 +1092,19 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
                 listEl.appendChild(row);
 
                 const childrenWrap=document.createElement('div');childrenWrap.className='children';childrenWrap.style.display='none';childrenWrap.style.maxHeight='0px';
+
+                // Для каждого семейства (familyKey) находим самый свежий файл — он получит latest-бейдж.
+                // Дети уже отсортированы descending по натуральному имени, поэтому первое вхождение
+                // каждого ключа — это и есть новейший в семействе.
+                const _latestIdxByFamily = (() => {
+                    const seen = new Map();
+                    (dir.children||[]).forEach((f, i) => {
+                        const k = familyKey(f.name);
+                        if (!seen.has(k)) seen.set(k, i);
+                    });
+                    return new Set(seen.values());
+                })();
+
                 (dir.children||[]).forEach((f,idx)=>{
                     const crow=document.createElement('div');crow.className='row';crow.tabIndex=0;
                     const cthumb=document.createElement('div');cthumb.className='thumb';cthumb.innerHTML=fileIcon(f.name,false);
@@ -1081,10 +1113,12 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
                     const highlighted = highlightSnippet(f.name,lastQuery);
                     cname.innerHTML = highlighted.html;
                     if(highlighted.count>0){const mb=document.createElement('span');mb.className='match-badge';mb.textContent=highlighted.count + ' совп.';cname.appendChild(mb);}
-                    // Первый в (descending-)сортировке = самый свежий по версии → бейдж latest
-                    if(idx===0 && (dir.children||[]).length>1){
+                    // Бейдж latest — самый свежий в СВОЁМ семействе (не один на всю папку).
+                    // В папке с несколькими продуктами (Proxmox VE/Backup/MailGateway) каждое
+                    // семейство получает свой бейдж.
+                    if(_latestIdxByFamily.has(idx)){
                         const lb=document.createElement('span');lb.className='latest-badge';lb.textContent='latest';
-                        lb.title='Самая свежая версия в этой папке';
+                        lb.title='Самая свежая версия в этом семействе';
                         cname.appendChild(lb);
                     }
                     cmeta.appendChild(cname);
