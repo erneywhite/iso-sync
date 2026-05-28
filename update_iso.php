@@ -43,6 +43,18 @@ if (!$lock->acquire()) {
 register_shutdown_function([$lock, 'release']);
 
 try {
+    // Очистка осиротевших *.tmp от прошлых упавших прогонов (kill -9, OOM, перезагрузка).
+    // Lock уже взят — мы тут единственные, любой *.tmp / *.tmp.aria2 безопасно стирать.
+    // Resume-логика cURL-Downloader'а опирается на *.tmp от ТЕКУЩЕГО прогона между попытками,
+    // а не от предыдущего прогона (там данные могут быть от другого URL/версии).
+    $orphans = sweepOrphanTmp($localDir);
+    if ($orphans > 0) {
+        $logger->info("Удалено осиротевших *.tmp от прошлых прогонов: {$orphans}", [
+            'event' => 'orphan_tmp_swept',
+            'count' => $orphans,
+        ]);
+    }
+
     $config     = Config::loadFromFile($configPath);
     $hashCache  = new HashCache($cacheDir);
     $http       = new Http();
@@ -101,4 +113,30 @@ try {
         'fatal'      => $e->getMessage(),
     ]);
     exit(2);
+}
+
+/**
+ * Удаляет все *.tmp и *.tmp.aria2 в files/ (рекурсивно).
+ * Вызывается под flock — мы единственный update_iso, любой такой файл = мусор.
+ *
+ * @return int количество удалённых
+ */
+function sweepOrphanTmp(string $root): int
+{
+    if (!is_dir($root)) return 0;
+    $count = 0;
+    $iter = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS)
+    );
+    foreach ($iter as $f) {
+        /** @var SplFileInfo $f */
+        if (!$f->isFile()) continue;
+        $name = $f->getFilename();
+        if (str_ends_with($name, '.tmp') || str_ends_with($name, '.tmp.aria2')) {
+            if (@unlink($f->getPathname())) {
+                $count++;
+            }
+        }
+    }
+    return $count;
 }

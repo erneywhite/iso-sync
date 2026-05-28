@@ -13,6 +13,10 @@ final class Logger
 {
     private const LEVELS = ['debug', 'info', 'warn', 'error'];
 
+    /** Ротация: при превышении этого размера лог переименовывается в .1 (cо сдвигом старых). */
+    private const ROTATE_AT_BYTES = 10 * 1024 * 1024;  // 10 MB
+    private const KEEP_ROTATIONS  = 5;
+
     private bool $isTty;
     private string $logFile;
     private bool $silent;
@@ -114,6 +118,9 @@ final class Logger
             'message' => $message,
         ], $context);
 
+        // Ротация при превышении лимита — перед записью
+        $this->rotateIfNeeded();
+
         // JSON Lines в файл
         @file_put_contents(
             $this->logFile,
@@ -137,6 +144,25 @@ final class Logger
         // Без явного flush строка может застрять в буфере stdout до конца скрипта,
         // что особенно заметно перед долгими операциями (hash 8GB файла).
         fflush($stream);
+    }
+
+    /**
+     * Если текущий лог-файл превысил ROTATE_AT_BYTES, сдвигаем:
+     *   log.4 → log.5,  log.3 → log.4, ..., log.1 → log.2, log → log.1
+     * Самые старые (за пределами KEEP_ROTATIONS) перезаписываются автоматически
+     * благодаря POSIX-rename (silently overwrites).
+     */
+    private function rotateIfNeeded(): void
+    {
+        if (!is_file($this->logFile)) return;
+        if (@filesize($this->logFile) < self::ROTATE_AT_BYTES) return;
+
+        for ($i = self::KEEP_ROTATIONS - 1; $i >= 1; $i--) {
+            $src = $this->logFile . '.' . $i;
+            $dst = $this->logFile . '.' . ($i + 1);
+            if (is_file($src)) @rename($src, $dst);
+        }
+        @rename($this->logFile, $this->logFile . '.1');
     }
 
     private static function detectTty(): bool
