@@ -473,11 +473,17 @@ h1{
         0 4px 24px -8px rgba(168,85,247,0.12),
         inset 0 1px 0 rgba(255,255,255,0.03);
     /* 3D-наклон: переменные tilt-x/y задаются JS на mousemove (rotateX/rotateY
-       в небольших градусах). Восстановление транзишеном 0.4s после mouseleave. */
-    transform-style:preserve-3d;
+       в небольших градусах). Восстановление транзишеном 0.4s после mouseleave.
+       НЕ ставим transform-style:preserve-3d — внутри карточки нет 3D-детей,
+       но в комбинации с backdrop-filter на маке/Chrome компонент даёт
+       trail-артефакты: композитор оставляет «отпечатки» предыдущих кадров
+       при перерисовке нижней нейбулы. isolation:isolate + contain:paint
+       замыкают composite-region карточки, дополнительная страховка. */
     transform:perspective(900px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
     transition:border-color .2s, background .25s, transform .35s cubic-bezier(.2,.9,.3,1), box-shadow .25s;
     will-change:transform;
+    isolation:isolate;
+    contain:paint;
 }
 .bento-card:hover{
     border-color:rgba(168,85,247,0.28);
@@ -666,6 +672,10 @@ h1{
     background:var(--surface-1);
     border:1px solid var(--border-1);
     transition:transform .18s cubic-bezier(.2,.9,.2,1), background .18s, border-color .18s, box-shadow .18s;
+    /* contain:paint замыкает paint-регион ряда — иначе на маке при движении
+       нижней нейбулы композитор иногда оставляет ghost-полосы там, где
+       только что был ряд (видно как горизонтальные тени в фоне). */
+    contain:paint;
 }
 .row:hover{
     transform:translateY(-2px);
