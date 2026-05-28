@@ -705,6 +705,33 @@ h1{
 /* ========== Highlight (search) ========== */
 mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border-radius:3px}
 
+/* ========== Freshness-индикатор у даты файла ==========
+   Подкрашенная точка показывает возраст релиза (mtime теперь = upstream Last-Modified,
+   так что это реально "сколько прошло с публикации"). Свежие пульсируют. */
+.fresh-dot{
+    display:inline-block;
+    width:8px;height:8px;
+    border-radius:50%;
+    flex-shrink:0;
+    vertical-align:middle;
+    margin:0 2px;
+}
+.fresh-dot.fresh{
+    background:var(--ok);
+    box-shadow:0 0 0 0 rgba(74,222,128,0.45);
+    animation:pulseFresh 2.4s ease-in-out infinite;
+}
+.fresh-dot.aging{background:var(--warn);box-shadow:0 0 4px rgba(251,191,36,0.4)}
+.fresh-dot.old  {background:var(--muted-2)}
+@keyframes pulseFresh{
+    0%,100%{box-shadow:0 0 0 0 rgba(74,222,128,0.45)}
+    50%    {box-shadow:0 0 8px 1px rgba(74,222,128,0.7)}
+}
+/* Pulse не вечен — приостанавливаем когда вкладка не активна, экономим CPU */
+@media (prefers-reduced-motion: reduce){
+    .fresh-dot.fresh{animation:none}
+}
+
 /* ========== Responsive ========== */
 @media (max-width:880px){
     .container{margin:16px auto;padding:0 14px 20px}
@@ -1017,6 +1044,24 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
             }, 900);
         }
 
+        // Возраст файла (mtime теперь = upstream Last-Modified, см. Updater.doDownload).
+        // < 30 дней   → fresh (зелёный с пульсом)
+        // 30-180 дней → aging (жёлтый)
+        // > 180 дней  → old   (серый)
+        function freshness(mtime){
+            const ageDays = (Date.now()/1000 - mtime) / 86400;
+            if (ageDays < 30)  return 'fresh';
+            if (ageDays < 180) return 'aging';
+            return 'old';
+        }
+        function freshnessTitle(fr, mtime){
+            const ageDays = Math.max(0, Math.floor((Date.now()/1000 - mtime) / 86400));
+            const label = fr === 'fresh' ? 'свежий релиз'
+                       : fr === 'aging' ? 'средний возраст'
+                       : 'старый релиз';
+            return `${label} (≈${ageDays} дн. с публикации upstream)`;
+        }
+
         function buildSubLine(f){
             const sub = document.createElement('div'); sub.className='sub';
 
@@ -1026,8 +1071,12 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
 
             const dot1 = document.createElement('span'); dot1.className='dot'; dot1.textContent='•'; sub.appendChild(dot1);
 
+            // Дата + точка-freshness прямо за иконкой часов
             const dateF = document.createElement('span'); dateF.className='field';
-            dateF.innerHTML = svgIcon('ic-clock') + fmtDate(f.mtime);
+            const fr = freshness(f.mtime);
+            dateF.innerHTML = svgIcon('ic-clock')
+                + `<span class="fresh-dot ${fr}" title="${freshnessTitle(fr, f.mtime)}"></span>`
+                + fmtDate(f.mtime);
             sub.appendChild(dateF);
 
             const dot2 = document.createElement('span'); dot2.className='dot'; dot2.textContent='•'; sub.appendChild(dot2);
