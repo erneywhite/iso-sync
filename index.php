@@ -411,7 +411,12 @@ h1{
     box-shadow:
         0 4px 24px -8px rgba(168,85,247,0.12),
         inset 0 1px 0 rgba(255,255,255,0.03);
-    transition:border-color .2s, background .25s, transform .2s, box-shadow .25s;
+    /* 3D-наклон: переменные tilt-x/y задаются JS на mousemove (rotateX/rotateY
+       в небольших градусах). Восстановление транзишеном 0.4s после mouseleave. */
+    transform-style:preserve-3d;
+    transform:perspective(900px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+    transition:border-color .2s, background .25s, transform .35s cubic-bezier(.2,.9,.3,1), box-shadow .25s;
+    will-change:transform;
 }
 .bento-card:hover{
     border-color:rgba(168,85,247,0.28);
@@ -648,10 +653,18 @@ h1{
     cursor:pointer;
     white-space:nowrap;
 }
+.primary{
+    /* Магнит: переменные --mag-x/y устанавливаются из JS на mousemove,
+       по умолчанию 0. Hover добавляет базовый translateY -1px поверх. */
+    transform:translate(var(--mag-x, 0px), var(--mag-y, 0px));
+}
 .primary:hover{
-    transform:translateY(-1px);
+    transform:translate(var(--mag-x, 0px), calc(-1px + var(--mag-y, 0px)));
     box-shadow:0 8px 24px rgba(168,85,247,0.4),0 0 24px rgba(232,121,249,0.2);
     filter:brightness(1.05)
+}
+.ghost{
+    transform:translate(var(--mag-x, 0px), var(--mag-y, 0px));
 }
 .primary:active{transform:translateY(0)}
 .ghost{
@@ -1018,6 +1031,41 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
 
         const _reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+        // Магнитное "притяжение" к курсору: элемент слегка смещается на mousemove.
+        // На mouseleave сбрасывается, CSS-транзишен плавно возвращает.
+        // strength=5 → максимальное смещение ~5px по каждой оси. Не уехать за бордюр.
+        function attachMagnetic(el, strength = 5){
+            if (_reduceMotion) return;
+            el.addEventListener('mousemove', e => {
+                const r = el.getBoundingClientRect();
+                const x = ((e.clientX - r.left) / r.width  - 0.5) * strength * 2;
+                const y = ((e.clientY - r.top)  / r.height - 0.5) * strength * 2;
+                el.style.setProperty('--mag-x', x.toFixed(1) + 'px');
+                el.style.setProperty('--mag-y', y.toFixed(1) + 'px');
+            });
+            el.addEventListener('mouseleave', () => {
+                el.style.removeProperty('--mag-x');
+                el.style.removeProperty('--mag-y');
+            });
+        }
+
+        // 3D-наклон элемента к курсору: rotateX/rotateY в небольших градусах.
+        // maxDeg=3 → максимум 3° по каждой оси. Лёгкий parallax-эффект.
+        function attachTilt(el, maxDeg = 3){
+            if (_reduceMotion) return;
+            el.addEventListener('mousemove', e => {
+                const r = el.getBoundingClientRect();
+                const x = ((e.clientX - r.left) / r.width  - 0.5);  // -0.5..0.5
+                const y = ((e.clientY - r.top)  / r.height - 0.5);
+                el.style.setProperty('--tilt-x', (-y * maxDeg * 2).toFixed(2) + 'deg');
+                el.style.setProperty('--tilt-y', ( x * maxDeg * 2).toFixed(2) + 'deg');
+            });
+            el.addEventListener('mouseleave', () => {
+                el.style.removeProperty('--tilt-x');
+                el.style.removeProperty('--tilt-y');
+            });
+        }
+
         // Анимация числа 0 → target с easeOutQuart за durationMs.
         // formatter(value) — как форматировать число (humanSize для байт, Math.round для счётчиков).
         function animateNumber(el, target, durationMs, formatter){
@@ -1116,6 +1164,9 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
             const filesEl = el.querySelector('[data-anim="files"]');
             if (sizeEl)  animateNumber(sizeEl,  TOTAL_SIZE,  650, humanSize);
             if (filesEl) animateNumber(filesEl, TOTAL_FILES, 650, n => Math.round(n).toString());
+
+            // 3D-tilt на каждой bento-карточке
+            el.querySelectorAll('.bento-card').forEach(c => attachTilt(c, 2.5));
         }
 
         function renderMissing(){
@@ -1326,6 +1377,7 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
             btn.innerHTML = svgIcon('ic-copy') + ' Копировать <span style="opacity:.6">▾</span>';
             btn.setAttribute('aria-haspopup','true');
             btn.setAttribute('aria-expanded','false');
+            attachMagnetic(btn, 4);
 
             const menu=document.createElement('div');menu.className='dd-menu';
             const a1=document.createElement('a');a1.href='#';a1.className='dd-item';
@@ -1560,6 +1612,7 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
                     cdl.innerHTML = svgIcon('ic-download') + 'Скачать';
                     cdl.href=webDir+'/'+encodeURIComponent(dir.name)+'/'+encodeURIComponent(f.name);
                     cdl.setAttribute('download','');cdl.target='_blank';cdl.setAttribute('data-title','Скачать файл');
+                    attachMagnetic(cdl, 5);
 
                     const childUrl=window.location.origin+'/'+webDir+'/'+encodeURIComponent(dir.name)+'/'+encodeURIComponent(f.name);
                     cbtns.appendChild(cdl);
@@ -1621,6 +1674,7 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
                 dl.innerHTML = svgIcon('ic-download') + 'Скачать';
                 dl.href=webDir+'/'+encodeURIComponent(f.name);
                 dl.setAttribute('download','');dl.target='_blank';dl.setAttribute('data-title','Скачать файл');
+                attachMagnetic(dl, 5);
 
                 const fileUrl=window.location.origin+'/'+webDir+'/'+encodeURIComponent(f.name);
                 btns.appendChild(dl);
