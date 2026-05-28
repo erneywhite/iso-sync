@@ -906,6 +906,66 @@ h1{
 /* ========== Highlight (search) ========== */
 mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border-radius:3px}
 
+/* ========== Empty state ==========
+   Иллюстрированное "ничего не найдено": SVG-лупа с пунктирным внутренним кругом
+   медленно пульсирует, plus заголовок и подсказка. Шрифт-стек как в основном. */
+.empty-state{
+    text-align:center;
+    padding:50px 24px 60px;
+    color:var(--muted);
+    display:flex;flex-direction:column;align-items:center;gap:6px;
+}
+.empty-state .empty-icon{
+    width:104px;height:104px;
+    color:var(--accent);
+    opacity:0.35;
+    margin-bottom:14px;
+    animation:emptyPulse 3.6s ease-in-out infinite;
+}
+.empty-state .empty-icon .dashed{
+    animation:emptyRotate 18s linear infinite;
+    transform-origin:80px 80px;
+}
+@keyframes emptyPulse{
+    0%,100%{opacity:0.32;transform:scale(1)}
+    50%    {opacity:0.50;transform:scale(1.04)}
+}
+@keyframes emptyRotate{
+    from{transform:rotate(0)}
+    to  {transform:rotate(360deg)}
+}
+.empty-state .empty-title{
+    font-size:18px;font-weight:600;
+    color:var(--text);
+    margin-top:4px;
+}
+.empty-state .empty-meta{
+    font-size:13px;color:var(--muted);
+    max-width:460px;line-height:1.55;
+}
+.empty-state .empty-meta code{
+    background:rgba(255,255,255,0.05);
+    padding:1px 6px;border-radius:4px;
+    font-family:var(--mono);font-size:11.5px;color:var(--accent-2);
+}
+.empty-state .empty-hint{
+    margin-top:14px;
+    font-size:12px;color:var(--muted-2);
+}
+.empty-state .empty-hint kbd{
+    display:inline-block;
+    padding:1px 7px;
+    border:1px solid var(--border-2);
+    border-radius:5px;
+    background:rgba(255,255,255,0.04);
+    font-family:var(--mono);font-size:11px;
+    color:var(--text);
+}
+@media (prefers-reduced-motion: reduce){
+    .empty-state .empty-icon,
+    .empty-state .empty-icon .dashed{animation:none}
+}
+
 /* ========== Freshness-индикатор у даты файла ==========
    Подкрашенная точка показывает возраст релиза (mtime теперь = upstream Last-Modified,
    так что это реально "сколько прошло с публикации"). Свежие пульсируют. */
@@ -1538,7 +1598,37 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
             const dirs = items.filter(i=>i.type==='dir');
             const files = items.filter(i=>i.type!=='dir');
             const total = files.length + dirs.length;
-            if(total===0){countEl.innerHTML='<span>Файлов не найдено</span>';return;}
+            if(total===0){
+                // Два состояния:
+                // 1) lastQuery непустой → "ничего не найдено по запросу"
+                // 2) lastQuery пустой   → "хранилище пусто" (скрипт ещё не запускался)
+                const emptyIcon = `
+                    <svg class="empty-icon" viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+                        <circle cx="80" cy="80" r="50" stroke-opacity="0.55"/>
+                        <line x1="116" y1="116" x2="168" y2="168" stroke-opacity="0.55" stroke-linecap="round"/>
+                        <circle class="dashed" cx="80" cy="80" r="30" stroke-dasharray="4 6" stroke-opacity="0.75"/>
+                        <circle cx="80" cy="80" r="4" fill="currentColor" fill-opacity="0.7" stroke="none"/>
+                    </svg>`;
+                if(lastQuery){
+                    countEl.innerHTML = `Найдено <span class="num">0</span> по запросу <span class="num">«${escapeHtml(lastQuery)}»</span>`;
+                    listEl.innerHTML = `
+                        <div class="empty-state" role="status">
+                            ${emptyIcon}
+                            <div class="empty-title">Ничего не найдено</div>
+                            <div class="empty-meta">По запросу <code>${escapeHtml(lastQuery)}</code> ничего не подошло — ни по имени файла, ни по хэшу. Попробуйте короче или другое ключевое слово.</div>
+                            <div class="empty-hint">Нажмите <kbd>Esc</kbd> или крестик чтобы очистить поиск</div>
+                        </div>`;
+                } else {
+                    countEl.innerHTML = '<span>Хранилище пустое</span>';
+                    listEl.innerHTML = `
+                        <div class="empty-state" role="status">
+                            ${emptyIcon}
+                            <div class="empty-title">Здесь пока пусто</div>
+                            <div class="empty-meta">Скрипт <code>update_iso.php</code> ещё не загрузил ни одного образа. Запустите его вручную или дождитесь cron-задания.</div>
+                        </div>`;
+                }
+                return;
+            }
             countEl.innerHTML = `Найдено <span class="num">${total}</span> элемент(ов)` + (lastQuery ? ` по запросу <span class="num">«${escapeHtml(lastQuery)}»</span>` : '');
 
             dirs.forEach(dir=>{
