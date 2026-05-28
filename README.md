@@ -6,6 +6,7 @@
 
 **Локальное зеркало ISO-образов с автообновлением и веб-интерфейсом**
 
+[![Tests](https://github.com/erneywhite/iso-sync/actions/workflows/tests.yml/badge.svg)](https://github.com/erneywhite/iso-sync/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![PHP](https://img.shields.io/badge/PHP-8.1%2B-777BB4?logo=php&logoColor=white)](https://php.net)
 [![cURL](https://img.shields.io/badge/Requires-cURL-073551?logo=curl&logoColor=white)](https://curl.se)
