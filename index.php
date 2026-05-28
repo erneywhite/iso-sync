@@ -272,28 +272,21 @@ body{
    (0/50/100) блоб «проходил» пик opacity дважды за цикл и это выглядело как
    мерцание лампочки. Теперь 2 ключа (from/to) и плавный ping-pong через
    alternate, opacity статичная. translate3d принудительно создаёт GPU-слой. */
+/* Был movement-слой с анимацией nebula-drift, но на Firefox/Mac движение
+   blob'ов под UI элементами оставляло trail-«отпечатки» формы карточек/
+   рядов — композитор Firefox не успевал инвалидировать регионы над
+   движущимся слоем. Анимация снята; blob'ы остаются как статичный
+   дополнительный mesh-слой к основному фону на body. Без анимации
+   композитор стабилен. */
 body::before{
     content:'';
     position:fixed;
     inset:-10%;
     z-index:-2;
     pointer-events:none;
-    /* Серия хинтов для Safari/Mac: принудительная GPU-композиция, чтобы
-       слой не дёргался от перерисовок выше (mix-blend-mode, backdrop-filter,
-       SVG-фильтры). will-change + явный transform на старте промоутят слой
-       до начала анимации, а не на первом её кадре. */
-    will-change:transform;
-    transform:translate3d(0,0,0);
-    backface-visibility:hidden;
-    -webkit-backface-visibility:hidden;
     background:
         radial-gradient(ellipse 500px 400px at 35% 35%, rgba(168,85,247,0.20), transparent 65%),
         radial-gradient(ellipse 450px 380px at 70% 65%, rgba(232,121,249,0.14), transparent 65%);
-    animation:nebula-drift 60s ease-in-out infinite alternate;
-}
-@keyframes nebula-drift{
-    from{transform:translate3d(-25px,-15px,0) scale(0.98)}
-    to  {transform:translate3d(35px,25px,0)   scale(1.05)}
 }
 
 /* Subtle grain/noise — SVG-шум через data-URI поверх mesh. Inline-размер ~1 KB.
@@ -312,9 +305,8 @@ body::after{
     opacity:0.05;
 }
 
-@media (prefers-reduced-motion: reduce){
-    body::before{animation:none}
-}
+/* prefers-reduced-motion блок для body::before убран — нейбула теперь
+   статичная, гасить нечего. */
 
 .container{
     max-width:min(1600px,94vw);
