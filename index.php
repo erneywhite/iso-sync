@@ -186,24 +186,30 @@ if (is_dir($filesDir)) {
     /* Подсказка браузеру: страница тёмная — нативные контролы (option, скроллбары,
        автокомплит, дата-пикеры) должны рисоваться в тёмной палитре. */
     color-scheme: dark;
-    --bg-1:#06101a;
-    --bg-2:#0a1830;
+    /* Палитра: неоново-фиолетовая (под лого), с уклоном в тёмно-сливовый фон.
+       --accent (168,85,247 = #a855f7) и --accent-pink (232,121,249) — два главных
+       акцента. RGB-тройки удобны для использования внутри rgba(). */
+    --bg-1:#0a0613;
+    --bg-2:#1a0a2e;
     --surface-1:rgba(255,255,255,0.025);
     --surface-2:rgba(255,255,255,0.04);
-    --border-1:rgba(255,255,255,0.06);
-    --border-2:rgba(255,255,255,0.1);
-    --text:#e9f3fb;
-    --muted:#9fb0c1;
-    --muted-2:#6b7d8f;
-    --accent:#56c1ff;
-    --accent-2:#7ad9ff;
-    --accent-soft:rgba(86,193,255,0.12);
+    --border-1:rgba(168,85,247,0.08);
+    --border-2:rgba(168,85,247,0.18);
+    --text:#f0e9fb;
+    --muted:#a89ec1;
+    --muted-2:#6b6385;
+    --accent:#a855f7;
+    --accent-2:#d8b4fe;
+    --accent-pink:#f0abfc;
+    --accent-soft:rgba(168,85,247,0.13);
+    --accent-rgb:168,85,247;
+    --pink-rgb:232,121,249;
     --ok:#4ade80;
     --warn:#fbbf24;
     --err:#f87171;
     --radius:14px;
     --radius-sm:10px;
-    --shadow:0 6px 30px rgba(2,8,23,0.6);
+    --shadow:0 6px 30px rgba(10,5,25,0.7);
     --mono:ui-monospace,'JetBrains Mono','Cascadia Code','Fira Code','Courier New',monospace;
 }
 *{box-sizing:border-box}
@@ -212,15 +218,41 @@ html,body{height:100%;margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-
    фон без шва на любом размере страницы. */
 body{
     background:
-        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(86,193,255,0.08) 0%, transparent 60%),
-        radial-gradient(ellipse 60% 40% at 100% 100%, rgba(122,217,255,0.04) 0%, transparent 50%),
+        radial-gradient(ellipse 70% 50% at 15% -5%, rgba(168,85,247,0.20) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 50% at 100% 100%, rgba(232,121,249,0.14) 0%, transparent 60%),
         linear-gradient(180deg,var(--bg-1),var(--bg-2));
     color:var(--text);
     height:100vh;
     height:100dvh;
     overflow:hidden;
+    position:relative;
 }
-::selection{background:rgba(86,193,255,0.3);color:#fff}
+::selection{background:rgba(168,85,247,0.35);color:#fff}
+
+/* Анимированный nebula-фон.
+   Три неоновых "облака" медленно дрейфуют, цикл 45 сек. transform + opacity —
+   GPU-композитное, ноль нагрузки на CPU. На всю страницу через position:fixed,
+   pointer-events:none чтобы не мешать кликам. z-index:-1 уводит под контент. */
+body::before{
+    content:'';
+    position:fixed;
+    inset:-10%;
+    z-index:-1;
+    pointer-events:none;
+    background:
+        radial-gradient(ellipse 600px 450px at 25% 35%, rgba(168,85,247,0.22), transparent 65%),
+        radial-gradient(ellipse 500px 400px at 75% 65%, rgba(232,121,249,0.16), transparent 65%),
+        radial-gradient(ellipse 700px 500px at 50% 100%, rgba(124,58,237,0.14), transparent 65%);
+    animation:nebula-drift 45s ease-in-out infinite alternate;
+}
+@keyframes nebula-drift{
+    0%{transform:translate(0,0) scale(1);opacity:0.85}
+    50%{transform:translate(40px,-25px) scale(1.06);opacity:1}
+    100%{transform:translate(-25px,35px) scale(0.98);opacity:0.9}
+}
+@media (prefers-reduced-motion: reduce){
+    body::before{animation:none}
+}
 
 .container{
     max-width:min(1600px,94vw);
@@ -244,7 +276,20 @@ header{
     padding:8px 4px;
 }
 .brand{display:flex;align-items:center;gap:14px;min-width:0}
-.logo-img{width:48px;height:48px;border-radius:12px;box-shadow:0 4px 16px rgba(86,193,255,0.15)}
+.logo-img{
+    width:48px;height:48px;border-radius:12px;
+    box-shadow:
+        0 4px 20px rgba(168,85,247,0.45),
+        0 0 50px rgba(232,121,249,0.20);
+    animation:logoPulse 4s ease-in-out infinite;
+}
+@keyframes logoPulse{
+    0%,100%{box-shadow:0 4px 20px rgba(168,85,247,0.40),0 0 50px rgba(232,121,249,0.18)}
+    50%    {box-shadow:0 4px 28px rgba(168,85,247,0.60),0 0 70px rgba(232,121,249,0.30)}
+}
+@media (prefers-reduced-motion: reduce){
+    .logo-img{animation:none}
+}
 h1{
     margin:0;
     font-size:24px;
@@ -285,7 +330,12 @@ h1{
     background-repeat:no-repeat;
     background-position:12px center;
 }
-.search:focus{outline:none;border-color:rgba(86,193,255,0.4);background-color:rgba(86,193,255,0.04)}
+.search:focus{
+    outline:none;
+    border-color:rgba(168,85,247,0.5);
+    background-color:rgba(168,85,247,0.06);
+    box-shadow:0 0 28px -6px rgba(168,85,247,0.55);
+}
 
 /* ========== Status bar — bento из 3 карточек ==========
    Grid с auto-fit: на широком 3 колонки, на среднем 2, на узком стек.
@@ -299,16 +349,24 @@ h1{
     border:none;
 }
 .bento-card{
-    background:linear-gradient(135deg, rgba(86,193,255,0.04), rgba(122,217,255,0.015));
+    background:linear-gradient(135deg, rgba(168,85,247,0.06), rgba(232,121,249,0.02));
     border:1px solid var(--border-1);
     border-radius:var(--radius);
     padding:14px 16px;
     display:flex;flex-direction:column;gap:6px;
-    transition:border-color .2s, background .25s, transform .2s;
+    backdrop-filter:blur(14px) saturate(140%);
+    -webkit-backdrop-filter:blur(14px) saturate(140%);
+    box-shadow:
+        0 4px 24px -8px rgba(168,85,247,0.12),
+        inset 0 1px 0 rgba(255,255,255,0.03);
+    transition:border-color .2s, background .25s, transform .2s, box-shadow .25s;
 }
 .bento-card:hover{
-    border-color:var(--border-2);
-    background:linear-gradient(135deg, rgba(86,193,255,0.06), rgba(122,217,255,0.025));
+    border-color:rgba(168,85,247,0.28);
+    background:linear-gradient(135deg, rgba(168,85,247,0.09), rgba(232,121,249,0.035));
+    box-shadow:
+        0 6px 32px -8px rgba(168,85,247,0.25),
+        inset 0 1px 0 rgba(255,255,255,0.05);
 }
 .bento-card .card-head{
     display:flex;align-items:center;gap:6px;
@@ -366,8 +424,8 @@ h1{
 }
 .card::-webkit-scrollbar{width:10px}
 .card::-webkit-scrollbar-track{background:transparent}
-.card::-webkit-scrollbar-thumb{background:linear-gradient(180deg,rgba(86,193,255,0.35),rgba(86,193,255,0.1));border-radius:10px}
-.card::-webkit-scrollbar-thumb:hover{background:linear-gradient(180deg,rgba(86,193,255,0.5),rgba(86,193,255,0.2))}
+.card::-webkit-scrollbar-thumb{background:linear-gradient(180deg,rgba(168,85,247,0.35),rgba(168,85,247,0.1));border-radius:10px}
+.card::-webkit-scrollbar-thumb:hover{background:linear-gradient(180deg,rgba(168,85,247,0.5),rgba(168,85,247,0.2))}
 
 .count{color:var(--muted);font-size:13px;margin-bottom:14px;display:flex;align-items:center;gap:8px}
 .count .num{color:var(--text);font-weight:700;font-variant-numeric:tabular-nums}
@@ -389,11 +447,11 @@ h1{
 .row:hover{
     transform:translateY(-2px);
     background:var(--surface-2);
-    border-color:rgba(86,193,255,0.22);
+    border-color:rgba(168,85,247,0.22);
     box-shadow:
         0 8px 24px rgba(2,8,23,0.4),
-        0 0 0 1px rgba(86,193,255,0.06),
-        0 0 22px -10px rgba(86,193,255,0.45);
+        0 0 0 1px rgba(168,85,247,0.06),
+        0 0 22px -10px rgba(168,85,247,0.45);
 }
 
 /* ========== Бренд-цвета дистрибутивов ==========
@@ -419,7 +477,7 @@ h1{
 .row.has-distro .thumb.folder{
     box-shadow:
         inset 3px 0 0 rgba(var(--distro-rgb), 0.85),
-        0 4px 12px rgba(86,193,255,0.2);
+        0 4px 12px rgba(168,85,247,0.2);
 }
 
 /* На hover вместо общего cyan-glow строка светится в цвет своего дистрибутива */
@@ -430,7 +488,7 @@ h1{
         0 0 0 1px rgba(var(--distro-rgb), 0.08),
         0 0 22px -10px rgba(var(--distro-rgb), 0.45);
 }
-.row:focus{outline:none;border-color:rgba(86,193,255,0.35);box-shadow:0 0 0 3px rgba(86,193,255,0.12)}
+.row:focus{outline:none;border-color:rgba(168,85,247,0.35);box-shadow:0 0 0 3px rgba(168,85,247,0.12)}
 .row.dir-row{cursor:pointer}
 .row.menu-open,.row.menu-open:hover{transform:none!important}
 
@@ -444,9 +502,9 @@ h1{
     flex-shrink:0;
 }
 .thumb.folder{
-    background:linear-gradient(135deg,var(--accent),#7ad9ff);
+    background:linear-gradient(135deg,var(--accent),var(--accent-pink));
     color:#012;
-    box-shadow:0 4px 12px rgba(86,193,255,0.2);
+    box-shadow:0 4px 12px rgba(168,85,247,0.2);
 }
 .thumb.missing{background:rgba(248,113,113,0.12);color:var(--err);box-shadow:0 0 0 1px rgba(248,113,113,0.2) inset}
 .icon{width:24px;height:24px;display:block;flex-shrink:0}
@@ -538,7 +596,11 @@ h1{
     cursor:pointer;
     white-space:nowrap;
 }
-.primary:hover{transform:translateY(-1px);box-shadow:0 8px 22px rgba(86,193,255,0.25);filter:brightness(1.05)}
+.primary:hover{
+    transform:translateY(-1px);
+    box-shadow:0 8px 24px rgba(168,85,247,0.4),0 0 24px rgba(232,121,249,0.2);
+    filter:brightness(1.05)
+}
 .primary:active{transform:translateY(0)}
 .ghost{
     background:transparent;
@@ -611,7 +673,7 @@ h1{
     font-weight:500;
     color:var(--accent);
     background:var(--accent-soft);
-    border:1px solid rgba(86,193,255,0.15);
+    border:1px solid rgba(168,85,247,0.15);
     cursor:pointer;
     transition:all .15s ease;
     user-select:all;
@@ -620,9 +682,9 @@ h1{
     line-height:1.4;
 }
 .hash-clickable:hover{
-    color:#9ae2ff;
-    background:rgba(86,193,255,0.18);
-    border-color:rgba(86,193,255,0.3);
+    color:var(--accent-2);
+    background:rgba(168,85,247,0.18);
+    border-color:rgba(168,85,247,0.3);
 }
 .hash-clickable.copied{color:var(--ok);background:rgba(74,222,128,0.12);border-color:rgba(74,222,128,0.3)}
 .hash-clickable .ico{width:11px;height:11px;opacity:.6;flex-shrink:0}
@@ -758,7 +820,7 @@ h1{
 }
 
 /* ========== Highlight (search) ========== */
-mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border-radius:3px}
+mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border-radius:3px}
 
 /* ========== Freshness-индикатор у даты файла ==========
    Подкрашенная точка показывает возраст релиза (mtime теперь = upstream Last-Modified,
