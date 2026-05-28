@@ -278,7 +278,14 @@ body::before{
     inset:-10%;
     z-index:-2;
     pointer-events:none;
+    /* Серия хинтов для Safari/Mac: принудительная GPU-композиция, чтобы
+       слой не дёргался от перерисовок выше (mix-blend-mode, backdrop-filter,
+       SVG-фильтры). will-change + явный transform на старте промоутят слой
+       до начала анимации, а не на первом её кадре. */
     will-change:transform;
+    transform:translate3d(0,0,0);
+    backface-visibility:hidden;
+    -webkit-backface-visibility:hidden;
     background:
         radial-gradient(ellipse 500px 400px at 35% 35%, rgba(168,85,247,0.20), transparent 65%),
         radial-gradient(ellipse 450px 380px at 70% 65%, rgba(232,121,249,0.14), transparent 65%);
@@ -552,24 +559,69 @@ h1{
     fill:url(#spark-grad);
     opacity:.8;
 }
+/* Glow для линии — широкий полупрозрачный stroke под основной линией.
+   Раньше был filter:drop-shadow(), но на маке это запускает софтверный
+   фильтр и каскадно мерцает нижний body::before. SVG-нативный glow
+   рисуется через GPU без артефактов. */
+.sparkline .spark-line-glow{
+    fill:none;
+    stroke:#a855f7;
+    stroke-width:4;
+    stroke-opacity:0.28;
+    stroke-linecap:round;
+    stroke-linejoin:round;
+}
 .sparkline .spark-line{
     fill:none;
     stroke:var(--accent);
     stroke-width:1.5;
     stroke-linejoin:round;
     stroke-linecap:round;
-    filter:drop-shadow(0 0 4px rgba(168,85,247,0.45));
 }
+.sparkline .spark-dot-glow{
+    fill:#f0abfc;
+    opacity:0.32;
+}
+/* Pulse через transform:scale (не через r) — анимация SVG-атрибутов
+   на маке/сафари не всегда идёт по GPU, transform всегда. */
 .sparkline .spark-dot{
     fill:var(--accent-2);
-    filter:drop-shadow(0 0 5px rgba(232,121,249,0.85));
+    transform-box:fill-box;
+    transform-origin:center;
     animation:sparkPulse 2.4s ease-in-out infinite;
 }
 .sparkline.flat .spark-dot{animation:none}
 @keyframes sparkPulse{
-    0%,100%{r:2.2}
-    50%    {r:3.2}
+    0%,100%{transform:scale(1)}
+    50%    {transform:scale(1.35)}
 }
+
+/* Draw-on эффект: линия рисуется слева направо через stroke-dashoffset,
+   заливка проявляется с задержкой, точка появляется с лёгким overshoot.
+   Класс .draw-in вешает JS после рендера (если не reduce-motion). */
+.sparkline.draw-in .spark-area{
+    animation:sparkAreaIn 700ms 280ms ease-out backwards;
+}
+.sparkline.draw-in .spark-dot{
+    animation:sparkDotIn 380ms 820ms cubic-bezier(.2,1.7,.3,1) backwards,
+              sparkPulse 2.4s 1200ms ease-in-out infinite;
+}
+.sparkline.draw-in .spark-dot-glow{
+    animation:sparkGlowIn 420ms 880ms ease-out backwards;
+}
+@keyframes sparkAreaIn{
+    from{opacity:0}
+    to  {opacity:0.8}
+}
+@keyframes sparkGlowIn{
+    from{opacity:0}
+    to  {opacity:0.32}
+}
+@keyframes sparkDotIn{
+    from{opacity:0;transform:scale(0)}
+    to  {opacity:1;transform:scale(1)}
+}
+
 .bento-card .card-meta .delta-val{
     color:var(--accent-2);
     font-weight:700;
@@ -577,6 +629,9 @@ h1{
 }
 @media (prefers-reduced-motion: reduce){
     .sparkline .spark-dot{animation:none}
+    .sparkline.draw-in .spark-area,
+    .sparkline.draw-in .spark-dot,
+    .sparkline.draw-in .spark-dot-glow{animation:none}
 }
 
 /* ========== Card ========== */
@@ -1261,7 +1316,9 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
         /* Sparkline для карточки «Хранилище».
          * series: массив {ts: unix-sec, total: cumulative-bytes}.
          * Рисуем кумулятивный график на 90-дневном окне (или весь ряд если он короче).
-         * Если данных < 2 точек — точку не рисуем (рост 0, без графика). */
+         * Glow для линии и точки — SVG-нативный (дублирующие элементы с
+         * большим радиусом / шире stroke), а не filter:drop-shadow — он на
+         * маке/сафари каскадно мерцает нижние слои. */
         function renderSparkline(host, series){
             if (!host || !Array.isArray(series) || series.length < 2) return;
             const W = 280, H = 36, padT = 4, padB = 4;
@@ -1290,8 +1347,10 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
             const lastX = coords[coords.length-1][0];
             const lastY = coords[coords.length-1][1];
 
+            const drawClass = _reduceMotion ? '' : ' draw-in';
+
             host.innerHTML = `
-                <svg class="sparkline${isFlat ? ' flat' : ''}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+                <svg class="sparkline${isFlat ? ' flat' : ''}${drawClass}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
                     <defs>
                         <linearGradient id="spark-grad" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="0%"   stop-color="#a855f7" stop-opacity="0.45"/>
@@ -1299,9 +1358,39 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
                         </linearGradient>
                     </defs>
                     <path class="spark-area" d="${area}"/>
+                    <path class="spark-line-glow" d="${line}"/>
                     <path class="spark-line" d="${line}"/>
-                    <circle class="spark-dot" cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="2.6"/>
+                    <circle class="spark-dot-glow" cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="6"/>
+                    <circle class="spark-dot"      cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="2.6"/>
                 </svg>`;
+
+            // Draw-on: анимируем stroke-dashoffset у линии и её glow-двойника.
+            // CSS-классу .draw-in уже отдали area и точки (delay + ease в CSS),
+            // а для линии нужна JS-длина пути (getTotalLength), оттуда раздаём
+            // dasharray=length, dashoffset=length → transition к 0.
+            if (!_reduceMotion) {
+                const lineEl = host.querySelector('.spark-line');
+                const glowEl = host.querySelector('.spark-line-glow');
+                if (lineEl && typeof lineEl.getTotalLength === 'function') {
+                    const len = lineEl.getTotalLength();
+                    [lineEl, glowEl].forEach(p => {
+                        if (!p) return;
+                        p.style.strokeDasharray  = len + ' ' + len;
+                        p.style.strokeDashoffset = String(len);
+                        p.style.transition = 'none';
+                    });
+                    // Принудительный reflow перед навешиванием transition,
+                    // иначе браузер схлопнет старт и конец в один кадр.
+                    void lineEl.getBoundingClientRect();
+                    requestAnimationFrame(() => {
+                        [lineEl, glowEl].forEach(p => {
+                            if (!p) return;
+                            p.style.transition = 'stroke-dashoffset 950ms cubic-bezier(.4,0,.2,1)';
+                            p.style.strokeDashoffset = '0';
+                        });
+                    });
+                }
+            }
         }
 
         function renderStatusBar(){
