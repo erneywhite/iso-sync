@@ -202,6 +202,7 @@ final class Downloader implements DownloaderInterface
                         'expected_size' => $expectedSize,
                         'actual_size'   => $actualSize !== false ? (int)$actualSize : null,
                         'error'         => null,
+                        'remote_mtime'  => $remoteMTime,
                     ];
                 }
             } else {

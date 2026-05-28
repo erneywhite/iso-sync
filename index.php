@@ -353,6 +353,14 @@ h1{
     padding:2px 8px;border-radius:999px;
     font-size:11px;font-weight:700;letter-spacing:0.02em;
 }
+.latest-badge{
+    display:inline-block;margin-left:8px;
+    background:rgba(74,222,128,0.12);color:var(--ok);
+    border:1px solid rgba(74,222,128,0.25);
+    padding:1px 8px;border-radius:999px;
+    font-size:10.5px;font-weight:700;letter-spacing:0.04em;
+    text-transform:uppercase;
+}
 
 .btns{display:flex;align-items:center;gap:8px;flex-shrink:0}
 
@@ -754,6 +762,15 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
             }
         }
 
+        // Сжатый вид: "sha256:dec49008…f1ca5d9" — показываем по 8 символов с начала и с конца,
+        // полный — в нативном title (hover) и копируется по клику.
+        function shortenHash(full){
+            if(!full || !full.startsWith('sha256:')) return full;
+            const hex = full.slice(7);
+            if (hex.length < 20) return full;
+            return 'sha256:' + hex.slice(0, 8) + '…' + hex.slice(-7);
+        }
+
         function createClickableHash(hashValue) {
             if (!hashValue || hashValue === 'sha256:not_computed_yet') {
                 const span = document.createElement('span');
@@ -763,10 +780,12 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
             }
             const span = document.createElement('span');
             span.className = 'hash-clickable';
-            span.title = 'Кликните, чтобы скопировать хэш';
+            // Нативный title с переводом строки: полный хэш видно при наведении
+            span.title = hashValue + '\n(клик — копировать)';
             span.innerHTML = '<svg class="ico" aria-hidden="true"><use href="#ic-copy"></use></svg>';
             const txt = document.createElement('span');
-            txt.textContent = hashValue;
+            txt.textContent = shortenHash(hashValue);
+            txt.style.fontFamily = 'var(--mono)';
             span.appendChild(txt);
 
             span.addEventListener('click', function(e) {
@@ -944,7 +963,7 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
                 listEl.appendChild(row);
 
                 const childrenWrap=document.createElement('div');childrenWrap.className='children';childrenWrap.style.display='none';childrenWrap.style.maxHeight='0px';
-                (dir.children||[]).forEach(f=>{
+                (dir.children||[]).forEach((f,idx)=>{
                     const crow=document.createElement('div');crow.className='row';crow.tabIndex=0;
                     const cthumb=document.createElement('div');cthumb.className='thumb';cthumb.innerHTML=fileIcon(f.name,false);
                     const cmeta=document.createElement('div');cmeta.className='meta';
@@ -952,6 +971,12 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
                     const highlighted = highlightSnippet(f.name,lastQuery);
                     cname.innerHTML = highlighted.html;
                     if(highlighted.count>0){const mb=document.createElement('span');mb.className='match-badge';mb.textContent=highlighted.count + ' совп.';cname.appendChild(mb);}
+                    // Первый в (descending-)сортировке = самый свежий по версии → бейдж latest
+                    if(idx===0 && (dir.children||[]).length>1){
+                        const lb=document.createElement('span');lb.className='latest-badge';lb.textContent='latest';
+                        lb.title='Самая свежая версия в этой папке';
+                        cname.appendChild(lb);
+                    }
                     cmeta.appendChild(cname);
                     cmeta.appendChild(buildSubLine(f));
 

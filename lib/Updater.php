@@ -329,7 +329,14 @@ final class Updater
             return ['status' => 'failed', 'message' => $msg];
         }
 
-        // Обновим кэш сразу
+        // Выставляем mtime файла на upstream Last-Modified — теперь дата в UI/listing'е
+        // означает "когда upstream выпустил этот файл", а не "когда мы его скачали".
+        // skip_if_unchanged от этого только выигрывает (точнее сравнивается).
+        if (!empty($result['remote_mtime'])) {
+            @touch($localPath, (int)$result['remote_mtime']);
+        }
+
+        // Обновим кэш сразу (после touch, чтобы кэш-инвалидация по mtime была согласованной)
         $this->hashCache->forget($localPath);
         $this->hashCache->getOrCompute($localPath);
 

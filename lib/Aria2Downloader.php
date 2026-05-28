@@ -180,6 +180,7 @@ final class Aria2Downloader implements DownloaderInterface
             'expected_size' => $expectedSize,
             'actual_size'   => (int)$actualSize,
             'error'         => null,
+            'remote_mtime'  => $remoteMTime,
         ];
     }
 
