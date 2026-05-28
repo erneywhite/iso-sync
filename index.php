@@ -268,22 +268,25 @@ body{
 ::selection{background:rgba(168,85,247,0.35);color:#fff}
 
 /* Movement layer: 2 blob'а медленно дрейфуют поверх статичного mesh.
-   transform + opacity = GPU-композитное, ноль нагрузки на CPU. */
+   Только transform — opacity намеренно убрана: с alternate и тремя ключами
+   (0/50/100) блоб «проходил» пик opacity дважды за цикл и это выглядело как
+   мерцание лампочки. Теперь 2 ключа (from/to) и плавный ping-pong через
+   alternate, opacity статичная. translate3d принудительно создаёт GPU-слой. */
 body::before{
     content:'';
     position:fixed;
     inset:-10%;
     z-index:-2;
     pointer-events:none;
+    will-change:transform;
     background:
         radial-gradient(ellipse 500px 400px at 35% 35%, rgba(168,85,247,0.20), transparent 65%),
         radial-gradient(ellipse 450px 380px at 70% 65%, rgba(232,121,249,0.14), transparent 65%);
-    animation:nebula-drift 45s ease-in-out infinite alternate;
+    animation:nebula-drift 60s ease-in-out infinite alternate;
 }
 @keyframes nebula-drift{
-    0%{transform:translate(0,0) scale(1);opacity:0.85}
-    50%{transform:translate(50px,-30px) scale(1.08);opacity:1}
-    100%{transform:translate(-30px,40px) scale(0.97);opacity:0.9}
+    from{transform:translate3d(-25px,-15px,0) scale(0.98)}
+    to  {transform:translate3d(35px,25px,0)   scale(1.05)}
 }
 
 /* Subtle grain/noise — SVG-шум через data-URI, накладывается mix-blend-mode'ом
@@ -521,18 +524,33 @@ h1{
 
 /* ========== Sparkline на «Хранилище» ==========
    Мини-график кумулятивного роста объёма по релизным датам файлов (mtime
-   = upstream Last-Modified). Окно — 90 дней (или весь ряд если он короче).
-   SVG-площадь с градиентной заливкой + линия + точка-конец с glow.
-   Высота фиксированная, ширина 100% (растягивается под карточку). */
+   = upstream Last-Modified). Встаёт справа от значения «131 GB» в свободное
+   пространство — карточка остаётся той же высоты, что и соседние bento.
+   SVG-площадь с градиентной заливкой + линия + точка-конец с glow. */
+.bento-card.storage-card .storage-row{
+    display:flex;
+    align-items:center;
+    gap:14px;
+    min-height:30px;
+}
+.bento-card.storage-card .storage-row .card-value{
+    flex:0 0 auto;
+}
+.bento-card.storage-card .spark-slot{
+    flex:1 1 auto;
+    min-width:0;
+    height:34px;
+    display:block;
+    opacity:0.92;
+}
 .sparkline{
-    margin-top:4px;
-    width:100%;height:36px;
+    width:100%;height:100%;
     display:block;
     overflow:visible;  /* чтобы конечная точка с glow не подрезалась */
 }
 .sparkline .spark-area{
     fill:url(#spark-grad);
-    opacity:.85;
+    opacity:.8;
 }
 .sparkline .spark-line{
     fill:none;
@@ -540,7 +558,7 @@ h1{
     stroke-width:1.5;
     stroke-linejoin:round;
     stroke-linecap:round;
-    filter:drop-shadow(0 0 4px rgba(168,85,247,0.5));
+    filter:drop-shadow(0 0 4px rgba(168,85,247,0.45));
 }
 .sparkline .spark-dot{
     fill:var(--accent-2);
@@ -552,15 +570,7 @@ h1{
     0%,100%{r:2.2}
     50%    {r:3.2}
 }
-.bento-card .card-delta{
-    font-size:10.5px;
-    color:var(--muted-2);
-    text-transform:uppercase;
-    letter-spacing:0.05em;
-    display:flex;align-items:center;gap:6px;
-    margin-top:-2px;
-}
-.bento-card .card-delta .delta-val{
+.bento-card .card-meta .delta-val{
     color:var(--accent-2);
     font-weight:700;
     font-variant-numeric:tabular-nums;
@@ -1299,29 +1309,31 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
             const has = LAST_RUN && typeof LAST_RUN.total === 'number';
 
             // ===== Карточка 1: Хранилище =====
+            // Layout: head | [value-row: 131 GB + spark-slot] | [meta-row: count + missing? + delta?]
+            // Дельты слиты в meta inline — отдельной строки больше нет.
             const missingChip = MISSING.length
                 ? `<span class="sep">•</span><span class="accent warn">${MISSING.length}</span><span>отсутствует</span>`
                 : '';
-            // Дельта за неделю/месяц как маленькая подпись над спарклайном.
-            // Если за оба окна нули — подпись не показываем (карточка остаётся компактной).
-            const deltaChip = (STORAGE_DELTA_30D > 0)
-                ? `<div class="card-delta">
-                       <span>прирост 30д</span>
-                       <span class="delta-val">+${humanSize(STORAGE_DELTA_30D)}</span>
-                       ${STORAGE_DELTA_7D > 0 ? `<span class="sep">•</span><span>7д</span><span class="delta-val">+${humanSize(STORAGE_DELTA_7D)}</span>` : ''}
-                   </div>`
+            const deltaInline = (STORAGE_DELTA_30D > 0)
+                ? `<span class="sep">•</span><span>прирост</span>` +
+                  `<span class="delta-val">+${humanSize(STORAGE_DELTA_30D)}</span><span>за 30д</span>` +
+                  (STORAGE_DELTA_7D > 0 && STORAGE_DELTA_7D !== STORAGE_DELTA_30D
+                      ? `<span class="sep">•</span><span class="delta-val">+${humanSize(STORAGE_DELTA_7D)}</span><span>за 7д</span>`
+                      : '')
                 : '';
             const card1 = `
-                <div class="bento-card">
+                <div class="bento-card storage-card">
                     <div class="card-head">${svgIcon('ic-hdd')}<span>Хранилище</span></div>
-                    <div class="card-value" data-anim="size">${humanSize(TOTAL_SIZE)}</div>
+                    <div class="storage-row">
+                        <div class="card-value" data-anim="size">${humanSize(TOTAL_SIZE)}</div>
+                        <div class="spark-slot" data-spark-host></div>
+                    </div>
                     <div class="card-meta">
                         <span class="accent" data-anim="files">${TOTAL_FILES}</span>
                         <span>файл(ов)</span>
                         ${missingChip}
+                        ${deltaInline}
                     </div>
-                    ${deltaChip}
-                    <div data-spark-host></div>
                 </div>`;
 
             // ===== Карточка 2: Состояние =====
