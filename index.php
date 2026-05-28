@@ -365,20 +365,20 @@ h1{
     border:1px solid rgba(168,85,247,0.18);
 }
 
-/* actions растянуты на всё свободное место в шапке — внутри только поиск */
+/* actions растянуты на всё свободное место в шапке — внутри обёртка поиска */
 .actions{display:flex;gap:10px;align-items:center;flex:1 1 auto;min-width:0;max-width:640px}
+.search-wrap{position:relative;flex:1 1 auto;min-width:0}
 .search{
-    flex:1 1 auto;
     width:100%;
-    min-width:0;
     background:var(--surface-1);
     border:1px solid var(--border-1);
-    padding:11px 14px 11px 38px;
+    /* padding-right больше, чтобы крестик не наезжал на текст */
+    padding:11px 38px 11px 38px;
     border-radius:var(--radius-sm);
     color:inherit;
     font-size:14px;
-    transition:border-color .15s, background .15s;
-    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239fb0c1' stroke-width='2' stroke-linecap='round'><circle cx='11' cy='11' r='7'/><line x1='21' y1='21' x2='16.65' y2='16.65'/></svg>");
+    transition:border-color .15s, background .15s, box-shadow .15s;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23a89ec1' stroke-width='2' stroke-linecap='round'><circle cx='11' cy='11' r='7'/><line x1='21' y1='21' x2='16.65' y2='16.65'/></svg>");
     background-repeat:no-repeat;
     background-position:12px center;
 }
@@ -388,6 +388,25 @@ h1{
     background-color:rgba(168,85,247,0.06);
     box-shadow:0 0 28px -6px rgba(168,85,247,0.55);
 }
+/* Крестик очистки поиска. По умолчанию скрыт; показывается, когда .search-wrap
+   имеет класс .has-value (выставляется JS-ом на input). */
+.search-clear{
+    position:absolute;
+    right:8px;top:50%;transform:translateY(-50%);
+    width:22px;height:22px;
+    border:none;
+    background:rgba(255,255,255,0.06);
+    color:var(--muted);
+    border-radius:50%;
+    cursor:pointer;
+    display:none;
+    align-items:center;justify-content:center;
+    padding:0;
+    font-size:14px;line-height:1;
+    transition:background .15s, color .15s, transform .15s;
+}
+.search-clear:hover{background:rgba(168,85,247,0.25);color:var(--text);transform:translateY(-50%) scale(1.08)}
+.search-wrap.has-value .search-clear{display:flex}
 
 /* ========== Status bar — bento из 3 карточек ==========
    Grid с auto-fit: на широком 3 колонки, на среднем 2, на узком стек.
@@ -970,7 +989,10 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
                 <h1>iso-файлы<span class="tag">mirror</span></h1>
             </div>
             <div class="actions">
-                <input id="search" class="search" placeholder="Поиск по имени... (Ctrl+K)" aria-label="Поиск по имени" />
+                <div class="search-wrap" id="search-wrap">
+                    <input id="search" class="search" placeholder="Поиск по имени или хэшу (Ctrl+K)" aria-label="Поиск по имени или хэшу" />
+                    <button class="search-clear" id="search-clear" type="button" aria-label="Очистить">×</button>
+                </div>
             </div>
         </header>
 
@@ -1713,18 +1735,31 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
         function apply(){
             const q=(searchInput.value||'').trim().toLowerCase();
             lastQuery = q;
+            // Состояние крестика очистки: видим только когда есть текст в поиске
+            const wrap = document.getElementById('search-wrap');
+            if (wrap) wrap.classList.toggle('has-value', q.length > 0);
+
+            // Если запрос — длинная hex-строка (≥6 hex символов, ничего кроме),
+            // считаем что ищем по хэшу. Иначе только по имени.
+            const isHashQuery = q.length >= 6 && /^[a-f0-9]+$/.test(q);
+            const matchFile = (f) => {
+                if (f.name.toLowerCase().includes(q)) return true;
+                if (isHashQuery && f.type && f.type.toLowerCase().includes(q)) return true;
+                return false;
+            };
+
             let items=Array.isArray(FILES)?FILES.slice():[];
             if(q){
                 items = items.map(it=>{
                     if(it.type==='dir'){
                         const dirMatch = it.name.toLowerCase().includes(q);
-                        const filteredChildren = (it.children||[]).filter(c=>c.name.toLowerCase().includes(q));
+                        const filteredChildren = (it.children||[]).filter(matchFile);
                         if(dirMatch || filteredChildren.length>0){
                             return Object.assign({}, it, { children: dirMatch ? (it.children||[]) : filteredChildren, _dirMatch: dirMatch });
                         }
                         return null;
                     }
-                    return it.name.toLowerCase().includes(q)?it:null;
+                    return matchFile(it) ? it : null;
                 }).filter(Boolean);
             }
             // Фиксированная сортировка (ручной выбор убран):
@@ -1798,6 +1833,16 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
             createSkeleton(4);
             setTimeout(()=>apply(),80);
         });
+
+        // Крестик очистки поиска
+        const _searchClear = document.getElementById('search-clear');
+        if (_searchClear) {
+            _searchClear.addEventListener('click', () => {
+                searchInput.value = '';
+                searchInput.focus();
+                apply();
+            });
+        }
 
         document.addEventListener('keydown', e=>{
             if(e.key==='Escape'){
