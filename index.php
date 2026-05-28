@@ -257,7 +257,9 @@ body::before{
 .container{
     max-width:min(1600px,94vw);
     margin:0 auto;
-    padding:28px 20px;
+    /* padding-top побольше — даём место под glow логотипа, чтобы он не обрезался
+       при overflow:hidden на body. По бокам/снизу сжатие осталось. */
+    padding:38px 20px 24px;
     height:100vh;
     height:100dvh;
     display:flex;
@@ -278,14 +280,27 @@ header{
 .brand{display:flex;align-items:center;gap:14px;min-width:0}
 .logo-img{
     width:48px;height:48px;border-radius:12px;
+    /* Плотный неоновый halo: тонкая rim-обводка + ближний glow + средний halo.
+       Радиус ~28px — помещается в padding-top контейнера (38px), без обрезок. */
     box-shadow:
-        0 4px 20px rgba(168,85,247,0.45),
-        0 0 50px rgba(232,121,249,0.20);
+        0 0 0 1px rgba(168,85,247,0.5),
+        0 4px 14px rgba(168,85,247,0.55),
+        0 0 24px rgba(232,121,249,0.40);
     animation:logoPulse 4s ease-in-out infinite;
 }
 @keyframes logoPulse{
-    0%,100%{box-shadow:0 4px 20px rgba(168,85,247,0.40),0 0 50px rgba(232,121,249,0.18)}
-    50%    {box-shadow:0 4px 28px rgba(168,85,247,0.60),0 0 70px rgba(232,121,249,0.30)}
+    0%,100%{
+        box-shadow:
+            0 0 0 1px rgba(168,85,247,0.45),
+            0 4px 14px rgba(168,85,247,0.50),
+            0 0 22px rgba(232,121,249,0.35);
+    }
+    50%{
+        box-shadow:
+            0 0 0 1px rgba(168,85,247,0.65),
+            0 4px 18px rgba(168,85,247,0.70),
+            0 0 30px rgba(232,121,249,0.50);
+    }
 }
 @media (prefers-reduced-motion: reduce){
     .logo-img{animation:none}
