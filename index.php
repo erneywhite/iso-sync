@@ -307,25 +307,45 @@ header{
 }
 h1{
     margin:0;
-    font-size:24px;
+    font-size:30px;
     font-weight:700;
-    letter-spacing:-0.01em;
-    background:linear-gradient(90deg,#fff 0%, var(--accent-2) 60%, var(--accent) 100%);
+    letter-spacing:-0.015em;
+    /* Расширенный градиент с белым → лавандовый → magenta → purple → белый,
+       размер фона 200% — больше текста, чтобы при движении position-а
+       было видно "перелив". Cycles 7s ease-in-out alternate. */
+    background:linear-gradient(90deg,
+        #fff 0%,
+        var(--accent-2) 22%,
+        var(--accent-pink) 45%,
+        var(--accent) 68%,
+        #fff 100%);
+    background-size:220% 100%;
+    background-position:0% 50%;
     -webkit-background-clip:text;
     -webkit-text-fill-color:transparent;
     background-clip:text;
+    color:transparent;
+    animation:headerFlow 7s ease-in-out infinite alternate;
+}
+@keyframes headerFlow{
+    0%   {background-position:0% 50%}
+    100% {background-position:100% 50%}
+}
+@media (prefers-reduced-motion: reduce){
+    h1{animation:none}
 }
 .tag{
     display:inline-block;
-    margin-left:10px;
-    padding:2px 8px;
+    margin-left:12px;
+    padding:3px 10px;
     border-radius:999px;
     background:var(--accent-soft);
     color:var(--accent);
-    font-size:11px;
+    font-size:13px;
     font-weight:600;
     letter-spacing:0.02em;
     vertical-align:middle;
+    border:1px solid rgba(168,85,247,0.18);
 }
 
 /* actions растянуты на всё свободное место в шапке — внутри только поиск */
