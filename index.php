@@ -287,41 +287,71 @@ h1{
 }
 .search:focus{outline:none;border-color:rgba(86,193,255,0.4);background-color:rgba(86,193,255,0.04)}
 
-/* ========== Status bar ========== */
+/* ========== Status bar — bento из 3 карточек ==========
+   Grid с auto-fit: на широком 3 колонки, на среднем 2, на узком стек.
+   Сам контейнер без border/bg — это просто компоновка, "стенки" у карточек. */
 .status-bar{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));
+    gap:12px;
+    padding:0;
+    background:none;
+    border:none;
+}
+.bento-card{
+    background:linear-gradient(135deg, rgba(86,193,255,0.04), rgba(122,217,255,0.015));
+    border:1px solid var(--border-1);
+    border-radius:var(--radius);
+    padding:14px 16px;
+    display:flex;flex-direction:column;gap:6px;
+    transition:border-color .2s, background .25s, transform .2s;
+}
+.bento-card:hover{
+    border-color:var(--border-2);
+    background:linear-gradient(135deg, rgba(86,193,255,0.06), rgba(122,217,255,0.025));
+}
+.bento-card .card-head{
+    display:flex;align-items:center;gap:6px;
+    font-size:11px;
+    color:var(--muted);
+    text-transform:uppercase;
+    letter-spacing:0.06em;
+    font-weight:700;
+}
+.bento-card .card-head .ico{width:13px;height:13px;opacity:.7;flex-shrink:0}
+.bento-card .card-value{
+    font-size:22px;
+    font-weight:700;
+    color:var(--text);
+    letter-spacing:-0.01em;
+    line-height:1.15;
+    font-variant-numeric:tabular-nums;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+.bento-card .card-value.ok{color:var(--ok)}
+.bento-card .card-value.warn{color:var(--warn)}
+.bento-card .card-value.err{color:var(--err)}
+.bento-card .card-value.muted{color:var(--muted)}
+.bento-card .card-meta{
+    font-size:12px;
+    color:var(--muted);
     display:flex;
     flex-wrap:wrap;
-    gap:8px;
+    gap:3px 8px;
     align-items:center;
-    padding:12px 16px;
-    border-radius:var(--radius);
-    background:linear-gradient(135deg, rgba(86,193,255,0.04), rgba(122,217,255,0.02));
-    border:1px solid var(--border-1);
-    font-size:13px;
-    color:var(--muted);
-    backdrop-filter:blur(8px);
 }
-.pill{
-    display:inline-flex;
-    align-items:center;
-    gap:6px;
-    padding:4px 10px;
-    border-radius:999px;
-    background:var(--surface-2);
-    border:1px solid var(--border-1);
-    font-weight:600;
-    font-size:12px;
-    letter-spacing:0.01em;
+.bento-card .card-meta .accent{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
+.bento-card .card-meta .accent.ok{color:var(--ok)}
+.bento-card .card-meta .accent.warn{color:var(--warn)}
+.bento-card .card-meta .accent.err{color:var(--err)}
+.bento-card .card-meta .sep{opacity:.4;color:var(--muted-2)}
+.bento-card .card-meta code{
+    background:rgba(255,255,255,0.05);
+    padding:1px 6px;border-radius:4px;
+    font-family:var(--mono);font-size:11px;
 }
-.pill .num{font-variant-numeric:tabular-nums;font-weight:700}
-.pill.ok{color:var(--ok);background:rgba(74,222,128,0.08);border-color:rgba(74,222,128,0.15)}
-.pill.warn{color:var(--warn);background:rgba(251,191,36,0.08);border-color:rgba(251,191,36,0.15)}
-.pill.err{color:var(--err);background:rgba(248,113,113,0.08);border-color:rgba(248,113,113,0.18)}
-.pill.muted{color:var(--muted)}
-.pill.accent{color:var(--accent);background:var(--accent-soft);border-color:rgba(86,193,255,0.2)}
-.sep{opacity:.35;color:var(--muted-2)}
-.status-time{color:var(--muted);font-size:12px}
-.status-time strong{color:var(--text);font-weight:600}
 
 /* ========== Card ========== */
 .card{
@@ -891,38 +921,81 @@ mark{background:rgba(86,193,255,0.25);color:var(--accent-2);padding:0 2px;border
 
         function renderStatusBar(){
             const el = document.getElementById('status-bar');
-            const parts = [];
+            const has = LAST_RUN && typeof LAST_RUN.total === 'number';
 
-            // Сводка по хранилищу — всегда показываем. data-anim-* — якоря для counter-up.
-            parts.push(`<span class="pill accent">${svgIcon('ic-hdd')}<span class="num" data-anim="size">${humanSize(TOTAL_SIZE)}</span></span>`);
-            parts.push(`<span class="pill muted"><span class="num" data-anim="files">${TOTAL_FILES}</span> файл(ов)</span>`);
+            // ===== Карточка 1: Хранилище =====
+            const missingChip = MISSING.length
+                ? `<span class="sep">•</span><span class="accent warn">${MISSING.length}</span><span>отсутствует</span>`
+                : '';
+            const card1 = `
+                <div class="bento-card">
+                    <div class="card-head">${svgIcon('ic-hdd')}<span>Хранилище</span></div>
+                    <div class="card-value" data-anim="size">${humanSize(TOTAL_SIZE)}</div>
+                    <div class="card-meta">
+                        <span class="accent" data-anim="files">${TOTAL_FILES}</span>
+                        <span>файл(ов)</span>
+                        ${missingChip}
+                    </div>
+                </div>`;
 
-            if(MISSING.length > 0){
-                parts.push(`<span class="pill warn">${svgIcon('ic-warn')}отсутствует ${MISSING.length}</span>`);
-            }
-
-            parts.push('<span class="sep">•</span>');
-
-            if(!LAST_RUN){
-                parts.push('<span class="status-time">Проверки не было — запустите <code style="background:rgba(255,255,255,0.05);padding:1px 6px;border-radius:4px;font-family:var(--mono);font-size:11px">php update_iso.php</code></span>');
-            } else {
-                const ts = LAST_RUN.finished_at || LAST_RUN.started_at;
-                const rel = relativeTime(ts);
-                parts.push(`<span class="status-time">${svgIcon('ic-clock')} Проверка: <strong>${fmtIso(ts)}</strong>${rel?' <span style="opacity:.6">('+rel+')</span>':''}</span>`);
-
-                if(typeof LAST_RUN.total === 'number'){
-                    parts.push('<span class="sep">•</span>');
-                    if(LAST_RUN.updated > 0) parts.push(`<span class="pill ok">${svgIcon('ic-check')}обновлено ${LAST_RUN.updated}</span>`);
-                    if(LAST_RUN.up_to_date > 0) parts.push(`<span class="pill muted">актуально ${LAST_RUN.up_to_date}</span>`);
-                    if(LAST_RUN.skipped > 0) parts.push(`<span class="pill muted">пропущено ${LAST_RUN.skipped}</span>`);
-                    if(LAST_RUN.failed > 0) parts.push(`<span class="pill err">ошибки ${LAST_RUN.failed}</span>`);
-                    if(typeof LAST_RUN.duration_s === 'number') parts.push(`<span class="pill muted">${LAST_RUN.duration_s} сек</span>`);
+            // ===== Карточка 2: Состояние =====
+            let stateValue = 'не запускалось';
+            let stateClass = 'muted';
+            let stateMeta  = '<span>запустите <code>php update_iso.php</code></span>';
+            if (LAST_RUN && LAST_RUN.fatal) {
+                stateValue = 'FATAL';
+                stateClass = 'err';
+                stateMeta = `<span style="color:var(--err)">${escapeHtml(LAST_RUN.fatal)}</span>`;
+            } else if (has) {
+                if (LAST_RUN.failed > 0) {
+                    stateValue = LAST_RUN.failed + ' ошибк(и)';
+                    stateClass = 'err';
+                } else if (LAST_RUN.updated > 0) {
+                    stateValue = LAST_RUN.updated + ' обновлено';
+                    stateClass = 'ok';
+                } else {
+                    stateValue = 'актуально';
+                    stateClass = 'ok';
                 }
+                const parts = [];
+                if (LAST_RUN.up_to_date > 0) parts.push(`<span class="accent">${LAST_RUN.up_to_date}</span><span>актуально</span>`);
+                if (LAST_RUN.updated > 0)    parts.push(`<span class="accent ok">${LAST_RUN.updated}</span><span>обновлено</span>`);
+                if (LAST_RUN.skipped > 0)    parts.push(`<span class="accent">${LAST_RUN.skipped}</span><span>пропущено</span>`);
+                if (LAST_RUN.failed > 0)     parts.push(`<span class="accent err">${LAST_RUN.failed}</span><span>ошибки</span>`);
+                stateMeta = parts.length
+                    ? parts.join('<span class="sep">•</span>')
+                    : '<span>—</span>';
             }
-            if(LAST_RUN && LAST_RUN.fatal){
-                parts.push(`<span class="pill err">FATAL: ${escapeHtml(LAST_RUN.fatal)}</span>`);
+            const card2 = `
+                <div class="bento-card">
+                    <div class="card-head">${svgIcon('ic-check')}<span>Состояние</span></div>
+                    <div class="card-value ${stateClass}">${stateValue}</div>
+                    <div class="card-meta">${stateMeta}</div>
+                </div>`;
+
+            // ===== Карточка 3: Последняя проверка =====
+            let checkValue = 'нет данных';
+            let checkMeta  = '<span style="opacity:.7">—</span>';
+            let checkCls   = 'muted';
+            if (LAST_RUN) {
+                const ts  = LAST_RUN.finished_at || LAST_RUN.started_at;
+                const rel = relativeTime(ts);
+                checkValue = rel || fmtIso(ts);
+                checkCls = '';
+                const metaParts = [`<span>${fmtIso(ts)}</span>`];
+                if (typeof LAST_RUN.duration_s === 'number') {
+                    metaParts.push(`<span class="sep">•</span><span>заняла <span class="accent">${LAST_RUN.duration_s}</span> сек</span>`);
+                }
+                checkMeta = metaParts.join('');
             }
-            el.innerHTML = parts.join(' ');
+            const card3 = `
+                <div class="bento-card">
+                    <div class="card-head">${svgIcon('ic-clock')}<span>Последняя проверка</span></div>
+                    <div class="card-value ${checkCls}">${checkValue}</div>
+                    <div class="card-meta">${checkMeta}</div>
+                </div>`;
+
+            el.innerHTML = card1 + card2 + card3;
 
             // Counter-up на тоталах (один раз при загрузке)
             const sizeEl  = el.querySelector('[data-anim="size"]');
