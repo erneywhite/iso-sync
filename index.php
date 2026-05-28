@@ -272,12 +272,13 @@ body{
    (0/50/100) блоб «проходил» пик opacity дважды за цикл и это выглядело как
    мерцание лампочки. Теперь 2 ключа (from/to) и плавный ping-pong через
    alternate, opacity статичная. translate3d принудительно создаёт GPU-слой. */
-/* Был movement-слой с анимацией nebula-drift, но на Firefox/Mac движение
-   blob'ов под UI элементами оставляло trail-«отпечатки» формы карточек/
-   рядов — композитор Firefox не успевал инвалидировать регионы над
-   движущимся слоем. Анимация снята; blob'ы остаются как статичный
-   дополнительный mesh-слой к основному фону на body. Без анимации
-   композитор стабилен. */
+/* Раньше тут была nebula-drift с translate3d — blob'ы двигались под UI.
+   На Firefox/Mac это давало trail-«отпечатки»: композитор не инвалидировал
+   регионы над движущимся слоем. Сейчас вместо движения — лёгкое «дыхание»
+   через filter:hue-rotate: пиксели плавно перекрашиваются между purple
+   и pink-фиолетовым, но геометрия слоя не меняется → composite-layer'ы
+   над ним не пересобираются → артефактов нет даже на проблемных браузерах.
+   Бонусом filter:hue-rotate легче на GPU чем transform с repaint'ом. */
 body::before{
     content:'';
     position:fixed;
@@ -287,6 +288,11 @@ body::before{
     background:
         radial-gradient(ellipse 500px 400px at 35% 35%, rgba(168,85,247,0.20), transparent 65%),
         radial-gradient(ellipse 450px 380px at 70% 65%, rgba(232,121,249,0.14), transparent 65%);
+    animation:nebula-breath 22s ease-in-out infinite alternate;
+}
+@keyframes nebula-breath{
+    from{filter:hue-rotate(0deg)}
+    to  {filter:hue-rotate(18deg)}
 }
 
 /* Subtle grain/noise — SVG-шум через data-URI поверх mesh. Inline-размер ~1 KB.
@@ -305,8 +311,9 @@ body::after{
     opacity:0.05;
 }
 
-/* prefers-reduced-motion блок для body::before убран — нейбула теперь
-   статичная, гасить нечего. */
+@media (prefers-reduced-motion: reduce){
+    body::before{animation:none}
+}
 
 .container{
     max-width:min(1600px,94vw);
