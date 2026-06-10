@@ -996,6 +996,10 @@ h1{
     border:1px solid var(--border-2);
     z-index:100;
 }
+/* У верхней кромки скролл-порта карточки тултип, открывающийся вверх,
+   срезается её overflow — JS вешает .tip-down по запасу места, и тултип
+   открывается вниз (зеркало .dd-menu.flip-up). */
+.tooltip.tip-down[data-title]:hover::after{bottom:auto;top:calc(100% + 8px)}
 
 /* ========== Missing block ========== */
 .missing-block{
@@ -1848,6 +1852,7 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
             el.addEventListener('transitionend', onEnd);
         }
 
+        let lastMenuOpenTs = 0; // гард scroll-close, см. cardEl-обработчик scroll ниже
         function setMenuOpen(menu, open){
             if(!menu) return;
             // aria-expanded синхронизируется здесь, а не в обработчике клика
@@ -1867,8 +1872,17 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
                     }
                 });
                 menu.classList.add('show');
+                lastMenuOpenTs = performance.now();
                 const row = menu.closest('.row'); if(row) row.classList.add('menu-open');
             } else {
+                // Если фокус внутри меню (Tab на пункте), display:none уронил бы
+                // его на body — возвращаем на кнопку-тогглер. Покрывает все пути
+                // закрытия: click-outside, Escape, скролл, открытие другого меню.
+                if(menu.contains(document.activeElement)){
+                    const g = menu.closest('.copy-group');
+                    const b = g ? g.querySelector('.copy-toggle') : null;
+                    if(b) b.focus();
+                }
                 menu.classList.remove('show');
                 const row = menu.closest('.row'); if(row) row.classList.remove('menu-open');
             }
@@ -2128,6 +2142,34 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
                 document.querySelectorAll('.dd-menu.show').forEach(m=>setMenuOpen(m,false));
             }
         });
+
+        const cardEl = listEl.closest('.card');
+        if(cardEl){
+            // Тултип по умолчанию рисуется НАД кнопкой; у верхней кромки
+            // скролл-порта .card его срезает overflow-y. Перед показом меряем
+            // запас сверху и флипаем вниз классом (зеркало positionMenu у dd-menu).
+            cardEl.addEventListener('mouseover', e=>{
+                const t = e.target.closest('.tooltip[data-title]');
+                if(!t) return;
+                // Тултип ~37px над кнопкой (29 высоты + 8 зазора), но замер идёт
+                // ДО сдвигов: hover-lift ряда -2px, магнитная кнопка до -5px,
+                // плюс люфт от повторных mouseover у границы порога.
+                const need = 48;
+                const gap = t.getBoundingClientRect().top - Math.max(cardEl.getBoundingClientRect().top, 0);
+                t.classList.toggle('tip-down', gap < need);
+            });
+
+            // Открытое меню absolute-якорено к своему ряду: при прокрутке карточки
+            // оно уезжает вместе с ним и режется кромкой (flip-решение принимается
+            // один раз при открытии). Стандартно для дропдаунов — закрыть при скролле.
+            // Гард по времени: клик по полусрезанной кнопке триггерит браузерный
+            // scroll-into-view сразу ПОСЛЕ открытия — без гарда этот же скролл
+            // мгновенно захлопывал меню.
+            cardEl.addEventListener('scroll', ()=>{
+                if(performance.now() - lastMenuOpenTs < 150) return;
+                document.querySelectorAll('.dd-menu.show').forEach(m=>setMenuOpen(m,false));
+            }, {passive:true});
+        }
 
         function apply(){
             const q=(searchInput.value||'').trim().toLowerCase();
