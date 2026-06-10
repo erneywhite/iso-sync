@@ -68,6 +68,13 @@ git fetch origin main && git reset --hard origin/main
   trail-артефакты («моргание»). Анимация фоновой нейбулы переведена с `translate`
   на `filter: hue-rotate` (геометрия слоя не меняется → артефактов нет).
   Не возвращать transform/translate-анимации на фоновые слои под карточками.
+- **Тултипы/dd-menu в списке**: у `.row` стоит `contain:paint` (клип потомков +
+  stacking context) — из-за него всплывашки резались по границе ряда. На
+  `:hover`/`:focus-within`/`.menu-open` containment точечно снимается, ряд
+  поднимается `z-index:10` (с открытым меню — `11`). Не возвращать жёсткий
+  contain — вернётся баг тултипов; если trail на Firefox/Mac вдруг проявится,
+  первый подозреваемый — «магнитные» кнопки (`attachMagnetic` двигает transform
+  при снятом contain), а не этот фикс.
 
 ## Рабочие конвенции
 
