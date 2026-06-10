@@ -729,6 +729,26 @@ h1{
 .row:focus{outline:none;border-color:rgba(168,85,247,0.35);box-shadow:0 0 0 3px rgba(168,85,247,0.12)}
 .row.dir-row{cursor:pointer}
 .row.menu-open,.row.menu-open:hover{transform:none!important}
+/* Тултип и dd-menu позиционируются за границами ряда, а contain:paint выше
+   и режет потомков по краю ряда, и замыкает их в stacking context ряда —
+   соседние ряды (у каждого свой context от того же contain) рисуются поверх.
+   На время взаимодействия снимаем paint-containment и поднимаем ряд над
+   соседями. position:relative — гарантия применения z-index: сейчас ряды
+   всюду grid-items (.list/.children — display:grid) и z-index сработал бы
+   и без него, но relative страхует от будущих не-grid контейнеров
+   (absolute-потомки на сам ряд не якорятся — у тултипа и меню свои
+   positioned-обёртки .tooltip/.copy-group). Нейбула больше не двигает
+   геометрию (hue-rotate), так что точечное снятие contain ghost-полосы
+   с мака не возвращает. */
+.row:hover,.row:focus-within,.row.menu-open{
+    contain:none;
+    position:relative;
+    z-index:10;
+}
+/* Ряд с открытым меню — выше ховера соседей: иначе flip-down меню,
+   нависающее над следующим рядом, при наведении на тот ряд уходит под него
+   (равный z-index → побеждает более поздний в DOM) и пункты не кликаются. */
+.row.menu-open{z-index:11}
 
 .thumb{
     width:44px;height:44px;
@@ -1734,7 +1754,6 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
                 e.stopPropagation();
                 const willOpen = !menu.classList.contains('show');
                 setMenuOpen(menu, willOpen);
-                btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
                 if(willOpen) positionMenu(menu, btn);
             });
             a1.addEventListener('click',e=>{e.preventDefault();copyToClipboard(fileUrl); setMenuOpen(menu,false);});
@@ -1831,10 +1850,19 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
 
         function setMenuOpen(menu, open){
             if(!menu) return;
+            // aria-expanded синхронизируется здесь, а не в обработчике клика
+            // кнопки: меню закрывается ещё тремя путями (открытие другого,
+            // click-outside, Escape) — иначе у кнопки протухало «развёрнуто».
+            const syncAria = (m, val) => {
+                const g = m.closest('.copy-group');
+                const b = g ? g.querySelector('.copy-toggle') : null;
+                if(b) b.setAttribute('aria-expanded', val ? 'true' : 'false');
+            };
             if(open){
                 document.querySelectorAll('.dd-menu.show').forEach(m=>{
                     if(m!==menu){
                         m.classList.remove('show');
+                        syncAria(m, false);
                         const rr = m.closest('.row'); if(rr) rr.classList.remove('menu-open');
                     }
                 });
@@ -1844,6 +1872,7 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
                 menu.classList.remove('show');
                 const row = menu.closest('.row'); if(row) row.classList.remove('menu-open');
             }
+            syncAria(menu, open);
         }
 
         function createSkeleton(count=6){
@@ -1995,6 +2024,10 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
                     childrenWrap.appendChild(crow);
 
                     crow.addEventListener('keydown', e=>{
+                        // Шорткаты только когда фокус на самом ряду: с кнопки
+                        // «Копировать»/пункта меню keydown всплывает сюда же,
+                        // и Enter запускал бы скачивание поверх их действия.
+                        if(e.target!==crow) return;
                         if(e.key==='Enter'){const a = crow.querySelector('a.primary'); if(a) a.click();}
                         if(e.key===' '){e.preventDefault(); const cb = crow.querySelector('.copy-toggle'); if(cb) cb.click();}
                     });
@@ -2026,7 +2059,16 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
                     }
                 });
 
+                // У стрелки не было своей логики, а клик по ряду игнорирует
+                // .btns — мышиный клик по ней глотался, Enter/Space с клавиатуры
+                // (нативный click кнопки) тоже. Делегируем клику ряда; бабблинг
+                // не глушим, чтобы document-хендлер закрывал открытые dd-menu.
+                toggle.addEventListener('click', ()=>row.click());
+
                 row.addEventListener('keydown', e=>{
+                    // Только когда фокус на самом ряду: у стрелки-toggle теперь
+                    // свой click-путь, не дублируем его повторным тогглом.
+                    if(e.target!==row) return;
                     if(e.key==='Enter'){row.click();}
                 });
             });
@@ -2057,6 +2099,9 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
                 listEl.appendChild(row);
 
                 row.addEventListener('keydown', e=>{
+                    // См. гард у crow: фокус на вложенной кнопке — её Enter/Space
+                    // обрабатывается нативно, не дублируем скачиванием/тогглом.
+                    if(e.target!==row) return;
                     if(e.key==='Enter'){const a = row.querySelector('a.primary'); if(a) a.click();}
                     if(e.key===' '){e.preventDefault(); const cb = row.querySelector('.copy-toggle'); if(cb) cb.click();}
                 });
