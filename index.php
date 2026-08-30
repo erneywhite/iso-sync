@@ -21,6 +21,30 @@ $configPath = $baseDir . '/config/iso-list.json';
 
 $hashCache = new HashCache($cacheDir);
 
+/* ===== Приватные каталоги =====
+   Каталог с файлом-маркером `.private` не попадает ни в листинг, ни в тоталы,
+   ни в спарклайн, ни в «Историю». Это только витрина: саму раздачу закрывает
+   веб-сервер (basic auth на каталог) — см. docs/PRIVATE-DIRS.md.
+
+   Почему маркер на диске, а не поле в config/iso-list.json: конфиг может не
+   распарситься (ниже есть catch, который просто рисует UI без missing-блока), и
+   тогда фильтрация молча отключилась бы — fail-open ровно на том, что прячем.
+   Маркер лежит рядом с данными и от валидности конфига не зависит. */
+$privateDirs  = [];   // имя каталога => true
+$privateNames = [];   // basename файла внутри приватного каталога => true
+if (is_dir($filesDir)) {
+    foreach (scandir($filesDir) ?: [] as $name) {
+        if ($name === '.' || $name === '..') continue;
+        $path = $filesDir . DIRECTORY_SEPARATOR . $name;
+        if (!is_dir($path) || !is_file($path . DIRECTORY_SEPARATOR . '.private')) continue;
+        $privateDirs[$name] = true;
+        foreach (scandir($path) ?: [] as $c) {
+            if (str_starts_with($c, '.')) continue;
+            if (is_file($path . DIRECTORY_SEPARATOR . $c)) $privateNames[$c] = true;
+        }
+    }
+}
+
 // Сводка последнего прогона update_iso (если есть)
 $lastRun = null;
 $lastRunPath = $logsDir . '/last_run.json';
@@ -99,6 +123,14 @@ function loadHistory(string $logsDir, int $maxEntries = 20): array
 }
 
 $history = loadHistory($logsDir);
+// Имена файлов из приватных каталогов вычищаем — иначе они утекали бы в
+// публичный UI через парсинг логов, мимо фильтра самого листинга.
+if ($privateNames !== []) {
+    $history = array_values(array_filter(
+        $history,
+        static fn(array $e): bool => !isset($privateNames[$e['file']])
+    ));
+}
 
 // Список из конфига для подсчёта отсутствующих
 $missing = [];
@@ -110,6 +142,10 @@ if (is_file($configPath)) {
             // режимах "ожидаемое имя" определяется только в момент запуска update_iso.
             // Пропускаем такие записи в проверке missing (иначе репортили бы false-positives).
             if ($entry->isFamily() || $entry->isDiscovery()) {
+                continue;
+            }
+            // Приватные записи не светим даже фактом отсутствия
+            if ($entry->localSubdir !== '' && isset($privateDirs[$entry->localSubdir])) {
                 continue;
             }
             $expectedPath = $filesDir
@@ -133,13 +169,15 @@ $totalSize = 0;
 $totalFiles = 0;
 if (is_dir($filesDir)) {
     foreach (scandir($filesDir) ?: [] as $name) {
-        if ($name === '.' || $name === '..' || $name === '.gitkeep') continue;
+        // str_starts_with('.') покрывает . .. .gitkeep и сам маркер .private
+        if (str_starts_with($name, '.')) continue;
         $path = $filesDir . DIRECTORY_SEPARATOR . $name;
         if (is_dir($path)) {
+            if (isset($privateDirs[$name])) continue;
             $children = [];
             $dirSize = 0;
             foreach (scandir($path) ?: [] as $c) {
-                if ($c === '.' || $c === '..' || $c === '.gitkeep') continue;
+                if (str_starts_with($c, '.')) continue;
                 $cp = $path . DIRECTORY_SEPARATOR . $c;
                 if (is_file($cp)) {
                     $size = (int)filesize($cp);
