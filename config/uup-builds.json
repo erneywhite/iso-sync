@@ -1,0 +1,32 @@
+{
+    "_comment": "Образы Windows, собираемые из официальных пакетов Microsoft через UUP dump. Отдельно от iso-list.json, потому что это не загрузка по URL, а сборка: другой прогон, другое расписание, другой вес. См. docs/UUP-BUILDS.md.",
+
+    "_comment_channel": "Канал задаётся полем title_pattern, а НЕ сортировкой по дате. В базе UUP свежайшие по дате записи — preview-ветки (26H1/26H2), и «взять самое новое» тихо притащит Insider вместо стабильной GA. Ветка 26200 = Windows 11 25H2. Когда GA переедет на следующую ветку, поправить здесь номер.",
+
+    "_comment_private": "local_subdir указывает в приватный каталог: образы Microsoft лицензия перераздавать не разрешает, поэтому они не должны попадать на публичную витрину. В каталоге обязан лежать маркер .private (docs/PRIVATE-DIRS.md).",
+
+    "builds": {
+        "windows-11-25h2": {
+            "enabled":       true,
+            "local_subdir":  "Windows OS",
+            "name_template": "Windows_11_25H2_{build}_{lang}_x64.iso",
+            "title_pattern": "/^Windows 11, version 25H2 /",
+            "arch":          "amd64",
+            "lang":          "en-us",
+            "edition":       "PROFESSIONAL",
+            "cleanup_old":   true
+        },
+
+        "_comment_server": "Пример серверной записи — выключена. Чтобы включить: enabled=true и сверить title_pattern с тем, что реально отдаёт API (php build_uup.php --dry-run покажет).",
+        "windows-server-2025": {
+            "enabled":       false,
+            "local_subdir":  "Windows OS",
+            "name_template": "Windows_Server_2025_{build}_{lang}_x64.iso",
+            "title_pattern": "/^Windows Server 2025/",
+            "arch":          "amd64",
+            "lang":          "en-us",
+            "edition":       "SERVERSTANDARD",
+            "cleanup_old":   true
+        }
+    }
+}
