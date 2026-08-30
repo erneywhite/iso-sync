@@ -241,12 +241,17 @@ function fetch(string $url, string $ipFlag, int $timeout = 25, array $extra = []
     return [(int)($parts[0] ?? 0), (float)($parts[1] ?? 0), rtrim($body, "\n"), (int)($parts[2] ?? 0)];
 }
 
-$apiOkV4 = false;
-$buildId = null;
-$buildTitle = null;
+/** Достаёт текст ошибки из ответа API ({"response":{"error":"..."}}). */
+function apiError(string $body): string {
+    $j = json_decode($body, true);
+    $e = $j['response']['error'] ?? ($j['error'] ?? null);
+    return is_string($e) ? $e : '';
+}
 
-// Пары списком, а не ключами массива: PHP приводит числовые строки ('-4')
-// к int, и под strict_types вызов fetch() падал бы с TypeError.
+$apiOkV4 = false;
+/** @var list<array{id:string,title:string}> кандидаты — настоящие сборки ОС */
+$candidates = [];
+
 if ($offline) {
     info('пропущено (--offline)');
 }
@@ -273,15 +278,31 @@ foreach ($offline ? [] : [['-4', 'IPv4'], ['-6', 'IPv6']] as [$flag, $label]) {
     ok("{$label}: HTTP 200 за " . sprintf('%.2f', $time) . " c, сборок в ответе: " . count($builds));
 
     if ($flag === '-4') $apiOkV4 = true;
-    if ($buildId === null) {
-        $first = is_array(reset($builds)) ? reset($builds) : null;
-        if (is_array($first)) {
-            $buildId    = (string)($first['uuid'] ?? $first['id'] ?? '');
-            $buildTitle = trim((string)($first['title'] ?? '') . ' ' . (string)($first['build'] ?? ''));
-            if ($buildId !== '') {
-                info('свежайшая сборка в базе: ' . ($buildTitle !== '' ? $buildTitle : $buildId));
-            }
-        }
+    if ($candidates !== []) continue;
+
+    // В базе вперемешку и сборки ОС, и пакеты обновлений (.NET, KB…).
+    // У вторых нет ни языков, ни редакций — get.php на них отвечает 400.
+    // Берём только то, что похоже на настоящую сборку: amd64 + номер вида
+    // (26100.1234) в заголовке и без признаков пакета обновления.
+    foreach ($builds as $key => $b) {
+        if (!is_array($b)) continue;
+        $id    = (string)($b['uuid'] ?? $b['id'] ?? (is_string($key) ? $key : ''));
+        $title = (string)($b['title'] ?? '');
+        $arch  = strtolower((string)($b['arch'] ?? ''));
+        if ($id === '' || $title === '') continue;
+        if ($arch !== '' && $arch !== 'amd64') continue;
+        if (preg_match('/\b(KB\d+|Update for|Security Update|\.NET|Dynamic|Servicing Stack)\b/i', $title)) continue;
+        if (!preg_match('/\(\d{5}\.\d+\)/', $title)) continue;
+
+        $candidates[] = ['id' => $id, 'title' => $title];
+        if (count($candidates) >= 3) break;
+    }
+
+    if ($candidates === []) {
+        warn('среди записей не нашлось полноценной сборки ОС (только пакеты обновлений)');
+    } else {
+        info('кандидаты для проверки CDN:');
+        foreach ($candidates as $c) info('  • ' . cut($c['title'], 60));
     }
 }
 if (!$apiOkV4 && !$offline) {
@@ -299,34 +320,67 @@ $fileName = null;
 
 if ($offline) {
     info('пропущено (--offline)');
-} elseif ($buildId === null || $buildId === '') {
-    warn('нет id сборки из раздела 4 — пропускаю проверку CDN');
-    $warnings[] = 'не удалось получить ссылки на файлы MS (API не отдал сборку)';
+} elseif ($candidates === []) {
+    warn('нет кандидатов из раздела 4 — пропускаю проверку CDN');
+    $warnings[] = 'не удалось получить ссылки на файлы MS (API не отдал сборку ОС)';
 } else {
-    $r = fetch(API . '/get.php?id=' . rawurlencode($buildId) . '&lang=en-us&edition=core', '-4', 40);
-    if ($r === null || $r[0] !== 200) {
-        bad('get.php не отдал список файлов' . ($r !== null ? " (HTTP {$r[0]})" : ''));
-        $warnings[] = 'get.php не отдал список файлов';
-    } else {
-        $json  = json_decode($r[2], true);
-        $files = $json['response']['files'] ?? [];
-        if (!is_array($files) || $files === []) {
-            bad('в ответе get.php нет файлов');
-            $warnings[] = 'get.php вернул пустой список файлов';
-        } else {
-            ok('получен список файлов обновления: ' . count($files) . ' шт.');
-            foreach ($files as $name => $meta) {
-                $u = is_array($meta) ? (string)($meta['url'] ?? '') : '';
-                if ($u !== '') { $fileUrl = $u; $fileName = (string)$name; break; }
-            }
-            if ($fileUrl === null) {
-                warn('ссылки на скачивание в ответе нет (API мог их скрыть)');
-                $warnings[] = 'API не отдал прямые ссылки на файлы';
-            } else {
-                info('пробный файл: ' . cut((string)$fileName, 58));
-                info('хост CDN: ' . (parse_url($fileUrl, PHP_URL_HOST) ?: '?'));
-            }
+    // Правильная последовательность API: язык → редакция → файлы.
+    // Дёргать get.php сразу с наугад выбранной редакцией нельзя: у записей
+    // без редакций (пакеты обновлений) это даёт HTTP 400, а имена редакций
+    // возвращаются заглавными (CORE, PROFESSIONAL).
+    foreach ($candidates as $cand) {
+        info('проверяю: ' . cut($cand['title'], 58));
+        $id = rawurlencode($cand['id']);
+
+        $r = fetch(API . '/listlangs.php?id=' . $id, '-4', 30);
+        if ($r === null || $r[0] !== 200) {
+            $err = $r !== null ? apiError($r[2]) : '';
+            info('  нет языков' . ($r !== null ? " (HTTP {$r[0]}" . ($err !== '' ? ": {$err}" : '') . ')' : ' (таймаут)'));
+            continue;
         }
+        $j     = json_decode($r[2], true);
+        $langs = $j['response']['langList'] ?? array_keys((array)($j['response']['langFancyNames'] ?? []));
+        $lang  = in_array('en-us', (array)$langs, true) ? 'en-us' : (string)(((array)$langs)[0] ?? '');
+        if ($lang === '') { info('  список языков пуст'); continue; }
+
+        $r = fetch(API . '/listeditions.php?id=' . $id . '&lang=' . rawurlencode($lang), '-4', 30);
+        if ($r === null || $r[0] !== 200) {
+            $err = $r !== null ? apiError($r[2]) : '';
+            info('  нет редакций' . ($r !== null ? " (HTTP {$r[0]}" . ($err !== '' ? ": {$err}" : '') . ')' : ' (таймаут)'));
+            continue;
+        }
+        $j    = json_decode($r[2], true);
+        $eds  = $j['response']['editionList'] ?? array_keys((array)($j['response']['editionFancyNames'] ?? []));
+        $ed   = (string)(((array)$eds)[0] ?? '');
+        if ($ed === '') { info('  список редакций пуст'); continue; }
+        info("  язык {$lang}, редакция {$ed}");
+
+        $r = fetch(API . '/get.php?id=' . $id . '&lang=' . rawurlencode($lang) . '&edition=' . rawurlencode($ed), '-4', 45);
+        if ($r === null || $r[0] !== 200) {
+            $err = $r !== null ? apiError($r[2]) : '';
+            info('  get.php: ' . ($r !== null ? "HTTP {$r[0]}" . ($err !== '' ? " — {$err}" : '') : 'таймаут'));
+            continue;
+        }
+        $j     = json_decode($r[2], true);
+        $files = $j['response']['files'] ?? [];
+        if (!is_array($files) || $files === []) { info('  список файлов пуст'); continue; }
+
+        ok('получен список файлов обновления: ' . count($files) . ' шт.');
+        foreach ($files as $name => $meta) {
+            $u = is_array($meta) ? (string)($meta['url'] ?? '') : '';
+            if ($u !== '') { $fileUrl = $u; $fileName = (string)$name; break; }
+        }
+        if ($fileUrl !== null) {
+            info('пробный файл: ' . cut((string)$fileName, 58));
+            info('хост CDN: ' . (parse_url($fileUrl, PHP_URL_HOST) ?: '?'));
+            break;
+        }
+        info('  ссылок на скачивание в ответе нет');
+    }
+
+    if ($fileUrl === null) {
+        bad('не удалось получить ни одной прямой ссылки на файлы Microsoft');
+        $warnings[] = 'API не отдал прямые ссылки — проверку CDN выполнить не удалось';
     }
 }
 
