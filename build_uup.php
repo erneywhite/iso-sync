@@ -253,10 +253,16 @@ foreach ($cfg['builds'] as $key => $e) {
     $earlyTarget = __DIR__ . '/files'
         . ((string)($e['local_subdir'] ?? '') !== '' ? '/' . (string)$e['local_subdir'] : '')
         . '/' . $earlyName;
-    if (!$dryRun
-        && is_file($earlyTarget)
-        && !UupResolver::needsRebuild($pick['build'], (string)($state[$key]['build'] ?? ''))
-    ) {
+    if (!$dryRun && is_file($earlyTarget)) {
+        // Достаточно наличия файла: номер сборки зашит в его имя, поэтому
+        // совпадение имени и есть доказательство, что собран именно этот
+        // билд. На состояние не завязываемся — потеря logs/uup-state.json
+        // иначе означала бы повторную загрузку и час конвертации впустую.
+        if ((string)($state[$key]['build'] ?? '') !== $pick['build']) {
+            $state[$key] = ['build' => $pick['build'], 'iso' => $earlyName, 'built_at' => date('c')];
+            UupBuilder::saveState($statePath, $state);
+            inf('состояние восстановлено по файлу на диске');
+        }
         ok('уже собрано — пропуск (' . $earlyName . ')');
         continue;
     }
@@ -444,9 +450,14 @@ foreach ($cfg['builds'] as $key => $e) {
     ok('собран ISO: ' . basename($iso) . ', ' . human((float)filesize($iso)));
 
     /* 8. Переносим на место */
+    // Размещение атомарное — как и загрузки в Updater. Иначе оборванное
+    // копирование оставило бы файл с правильным именем, но обрезанный, и
+    // следующий прогон принял бы его за готовый образ.
     if (!@rename($iso, $target)) {
         // rename не работает между разными файловыми системами
-        if (!@copy($iso, $target)) {
+        $tmpTarget = $target . '.tmp';
+        if (!@copy($iso, $tmpTarget) || !@rename($tmpTarget, $target)) {
+            @unlink($tmpTarget);
             bad('не удалось перенести ISO в ' . $target);
             $exit = 1;
             continue;
