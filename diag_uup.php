@@ -34,6 +34,16 @@ function human(float $b): string {
     while ($b >= 1024 && $i < count($u) - 1) { $b /= 1024; $i++; }
     return sprintf('%.1f %s', $b, $u[$i]);
 }
+/**
+ * Обрезка строки без зависимости от mbstring: на сервере CLI-PHP может быть
+ * собран без него (диагностика обязана работать в любом окружении).
+ */
+function cut(string $s, int $len): string {
+    if (function_exists('mb_substr')) return mb_substr($s, 0, $len);
+    $s = substr($s, 0, $len);
+    // не оставляем оборванный UTF-8 хвост
+    return (string)preg_replace('/[\x80-\xBF]+$|[\xC0-\xFD]$/', '', $s);
+}
 
 $problems = [];
 $warnings = [];
@@ -41,8 +51,27 @@ $warnings = [];
 echo "\n=== iso-sync: готовность сервера к сборке через UUP dump ===\n";
 echo "PHP " . PHP_VERSION . " (" . PHP_SAPI . "), " . php_uname('s') . ' ' . php_uname('r') . "\n";
 
-/* ─────────── 1. Может ли PHP вообще звать внешние процессы ─────────── */
-h('1. Возможность запускать внешние процессы');
+/* ─────────── 1. Окружение PHP ─────────── */
+h('1. Окружение PHP: расширения и запуск процессов');
+
+info('бинарник: ' . (PHP_BINARY !== '' ? PHP_BINARY : '?'));
+$extNeeded = ['curl' => false, 'json' => true, 'mbstring' => false, 'openssl' => false];
+foreach ($extNeeded as $ext => $required) {
+    $has = extension_loaded($ext);
+    if ($has)            { ok("расширение {$ext}"); }
+    elseif ($required)   { bad("расширение {$ext} отсутствует"); $problems[] = "нет PHP-расширения {$ext}"; }
+    else                 { info("расширение {$ext}: нет (не критично)"); }
+}
+// На сервере обычно два PHP: системный (в PATH у root) и тот, под которым
+// работает сайт/cron. Пайплайн этапа 3 поедет под тем, что пропишем в cron —
+// важно не перепутать, у них разный набор расширений.
+$sitePhp = null;
+foreach (glob('/www/server/php/*/bin/php') ?: [] as $cand) { $sitePhp = $cand; }
+if ($sitePhp !== null && $sitePhp !== PHP_BINARY) {
+    warn('на сервере есть второй PHP: ' . $sitePhp);
+    info('  сайт работает под ним; для cron-задач указывать полный путь явно');
+}
+echo "\n";
 
 $disabled = array_map('trim', explode(',', (string)ini_get('disable_functions')));
 $needFns  = ['shell_exec', 'proc_open', 'exec'];
@@ -100,7 +129,7 @@ foreach ($tools as $bin => $meta) {
             $out = trim(run(escapeshellarg($path) . $flag, 8));
             if ($out !== '') { $ver = strtok($out, "\n") ?: ''; break; }
         }
-        ok(sprintf('%-14s %s', $bin, $ver !== '' ? mb_substr($ver, 0, 46) : $path));
+        ok(sprintf('%-14s %s', $bin, $ver !== '' ? cut($ver, 46) : $path));
         if (in_array($bin, ['genisoimage', 'mkisofs', 'xorriso'], true)) $haveIso = true;
     } else {
         if ($meta['req']) {
@@ -256,7 +285,7 @@ if ($buildId === null || $buildId === '') {
                 warn('ссылки на скачивание в ответе нет (API мог их скрыть)');
                 $warnings[] = 'API не отдал прямые ссылки на файлы';
             } else {
-                info('пробный файл: ' . mb_substr((string)$fileName, 0, 58));
+                info('пробный файл: ' . cut((string)$fileName, 58));
                 info('хост CDN: ' . (parse_url($fileUrl, PHP_URL_HOST) ?: '?'));
             }
         }

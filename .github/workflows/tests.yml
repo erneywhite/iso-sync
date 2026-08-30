@@ -35,12 +35,21 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php-version }}
-          extensions: curl, json, mbstring
+          # mbstring намеренно НЕ ставим: на проде CLI-PHP собран без него.
+          # Пусть CI будет не щедрее боевого окружения, иначе незамеченная
+          # mb_*-зависимость всплывает уже на сервере.
+          extensions: curl, json
           coverage: none
           tools: none
 
       - name: Verify PHP version
         run: php -v
+
+      # Тесты покрывают только lib/. Скрипты в корне (update_iso, index,
+      # diag_*) ими не запускаются, поэтому синтаксис проверяем отдельно —
+      # иначе опечатка в них обнаруживается прямо на сервере.
+      - name: Lint all PHP files
+        run: find . -name '*.php' -not -path './.git/*' -print0 | xargs -0 -n1 -P4 php -l
 
       - name: Run tests
         run: php tests/run.php
