@@ -29,6 +29,11 @@ Claude Code обычно открывается на уровень выше (в
 - `config/iso-list.json` — список образов. **4 режима записей**: `fixed` / `latest` / `family` / `discovery` (схема — `config/iso-list.schema.json`).
 - `index.php` — веб-интерфейс (PHP + CSS + JS в одном файле, ~2200 строк).
 - `update_iso.php` — CLI проверки/загрузки; `generate_all_hashes.php` — пересчёт SHA256.
+- `build_uup.php` + `UupResolver`/`UupBuilder` + `config/uup-builds.json` —
+  сборка образов Windows из официальных пакетов Microsoft (см.
+  [docs/UUP-BUILDS.md](docs/UUP-BUILDS.md)). Отдельный прогон и расписание:
+  идёт часами и упирается в диск/CPU, мешать с быстрым `update_iso` нельзя.
+- `diag_private.php`, `diag_uup.php` — диагностика прода (только читают).
 
 ## Запуск и тесты
 
