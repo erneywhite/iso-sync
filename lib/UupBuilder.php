@@ -135,18 +135,30 @@ final class UupBuilder
     }
 
     /**
-     * Ищет собранный ISO в каталоге (конвертер кладёт его рядом с собой).
+     * Ищет собранный ISO.
      *
-     * @return string|null полный путь
+     * Каталогов несколько, потому что конвертер кладёт результат не всегда
+     * туда, где запущен: при вызове с папкой UUPs из другого места ISO
+     * появляется рядом с ней. Глоб регистронезависимый — расширение
+     * встречается и как .iso, и как .ISO.
+     *
+     * @param list<string> $dirs
+     * @param int          $minSize мелочь рядом (логи, обрезки) не считаем образом
+     * @return string|null полный путь до самого крупного найденного файла
      */
-    public static function findIso(string $dir): ?string
+    public static function findIso(array $dirs, int $minSize = 100 * 1024 * 1024): ?string
     {
         $best = null;
         $bestSize = 0;
-        foreach (glob(rtrim($dir, '/\\') . DIRECTORY_SEPARATOR . '*.iso') ?: [] as $f) {
-            $s = (int)@filesize($f);
-            // Берём самый крупный: рядом может лежать мелкий мусор
-            if ($s > $bestSize) { $best = $f; $bestSize = $s; }
+        foreach (array_unique($dirs) as $dir) {
+            if ($dir === '' || !is_dir($dir)) continue;
+            $pattern = rtrim($dir, '/\\') . DIRECTORY_SEPARATOR . '*.[iI][sS][oO]';
+            foreach (glob($pattern) ?: [] as $f) {
+                if (!is_file($f)) continue;
+                $s = (int)@filesize($f);
+                if ($s < $minSize) continue;
+                if ($s > $bestSize) { $best = $f; $bestSize = $s; }
+            }
         }
         return $best;
     }

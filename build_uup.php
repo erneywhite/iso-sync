@@ -387,26 +387,41 @@ foreach ($cfg['builds'] as $key => $e) {
         inf('конвертер уже скачан');
     }
 
-    /* 7. Конвертация. ISO появляется в каталоге, откуда запущен convert.sh */
-    line();
-    inf('конвертация в ISO — это надолго (десятки минут)…');
-    $log->info('UUP: старт конвертации', ['entry' => $key, 'build' => $pick['build']]);
-    foreach (glob($convDir . '/*.iso') ?: [] as $old) @unlink($old);
+    /* 7. Конвертация.
+       Куда именно конвертер положит ISO, зависит от версии: рядом с собой
+       или рядом с переданной папкой UUPs. Поэтому ищем в нескольких местах. */
+    $isoDirs = [$convDir, $entryWork, dirname($uupsDir), $uupsDir];
 
-    $rc = runLive('./convert.sh wim ' . escapeshellarg($uupsDir) . ' 0', $convDir);
-    if ($rc !== 0) {
-        bad("convert.sh завершился с кодом {$rc}");
-        $log->error('UUP: конвертация не удалась', ['entry' => $key, 'code' => $rc]);
-        $exit = 1;
-        continue;
+    $iso = UupBuilder::findIso($isoDirs);
+    if ($iso !== null) {
+        // Прошлый прогон уже собрал образ и упал позже (например, на переносе).
+        // Пересобирать час заново незачем.
+        ok('готовый ISO найден с прошлого прогона: ' . basename($iso));
+    } else {
+        line();
+        inf('конвертация в ISO — это надолго (десятки минут)…');
+        $log->info('UUP: старт конвертации', ['entry' => $key, 'build' => $pick['build']]);
+
+        $rc = runLive('./convert.sh wim ' . escapeshellarg($uupsDir) . ' 0', $convDir);
+        if ($rc !== 0) {
+            bad("convert.sh завершился с кодом {$rc}");
+            $log->error('UUP: конвертация не удалась', ['entry' => $key, 'code' => $rc]);
+            $exit = 1;
+            continue;
+        }
+        $iso = UupBuilder::findIso($isoDirs);
     }
-    $iso = UupBuilder::findIso($convDir);
+
     if ($iso === null) {
         bad('convert.sh отработал, но ISO не найден');
+        inf('искал в:');
+        foreach (array_unique($isoDirs) as $d) inf('  ' . $d);
+        inf('Найти вручную: find ' . escapeshellarg($workDir) . " -iname '*.iso'");
+        $log->error('UUP: ISO не найден после конвертации', ['entry' => $key, 'dirs' => array_values(array_unique($isoDirs))]);
         $exit = 1;
         continue;
     }
-    ok('собран ISO: ' . human((float)filesize($iso)));
+    ok('собран ISO: ' . basename($iso) . ', ' . human((float)filesize($iso)));
 
     /* 8. Переносим на место */
     if (!@rename($iso, $target)) {

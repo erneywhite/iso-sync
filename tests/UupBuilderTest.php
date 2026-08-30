@@ -163,13 +163,39 @@ test('findIso: берётся самый крупный ISO', function () use ($
     @mkdir($d, 0755, true);
     file_put_contents($d . '/small.iso', str_repeat('x', 10));
     file_put_contents($d . '/big.iso', str_repeat('x', 5000));
-    assertEquals($d . DIRECTORY_SEPARATOR . 'big.iso', UupBuilder::findIso($d));
+    assertEquals($d . DIRECTORY_SEPARATOR . 'big.iso', UupBuilder::findIso([$d], 100));
 });
 
-test('findIso: пусто — null', function () use ($tmpRoot) {
+test('findIso: ищет во всех переданных каталогах', function () use ($tmpRoot) {
+    // Конвертер кладёт ISO не всегда туда, где запущен: при вызове с папкой
+    // UUPs из другого места образ появляется рядом с ней. Ровно на этом
+    // первый боевой прогон и не нашёл готовый образ.
+    $a = $tmpRoot . '/dir_a';
+    $b = $tmpRoot . '/dir_b';
+    @mkdir($a, 0755, true);
+    @mkdir($b, 0755, true);
+    file_put_contents($b . '/result.iso', str_repeat('x', 3000));
+    assertEquals($b . DIRECTORY_SEPARATOR . 'result.iso', UupBuilder::findIso([$a, $b], 100));
+});
+
+test('findIso: расширение в верхнем регистре тоже находится', function () use ($tmpRoot) {
+    $d = $tmpRoot . '/upper';
+    @mkdir($d, 0755, true);
+    file_put_contents($d . '/RESULT.ISO', str_repeat('x', 3000));
+    assertEquals($d . DIRECTORY_SEPARATOR . 'RESULT.ISO', UupBuilder::findIso([$d], 100));
+});
+
+test('findIso: мелочь не принимается за образ', function () use ($tmpRoot) {
+    $d = $tmpRoot . '/tiny';
+    @mkdir($d, 0755, true);
+    file_put_contents($d . '/leftover.iso', 'мусор');
+    assertEquals(null, UupBuilder::findIso([$d], 1024), 'файл меньше порога — не образ');
+});
+
+test('findIso: пусто и несуществующие каталоги — null, без ошибок', function () use ($tmpRoot) {
     $d = $tmpRoot . '/empty';
     @mkdir($d, 0755, true);
-    assertEquals(null, UupBuilder::findIso($d));
+    assertEquals(null, UupBuilder::findIso([$d, $tmpRoot . '/nope', ''], 100));
 });
 
 test('cleanup', function () use ($tmpRoot) {
