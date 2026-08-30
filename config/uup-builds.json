@@ -1,11 +1,12 @@
 {
     "_comment": "Образы Windows, собираемые из официальных пакетов Microsoft через UUP dump. Отдельно от iso-list.json, потому что это не загрузка по URL, а сборка: другой прогон, другое расписание, другой вес. См. docs/UUP-BUILDS.md.",
 
-    "_comment_channel": "Канал задаётся полем title_pattern, а НЕ сортировкой по дате. В базе UUP свежайшие по дате записи — preview-ветки (26H1/26H2), и «взять самое новое» тихо притащит Insider вместо стабильной GA. Ветка 26200 = Windows 11 25H2. Когда GA переедет на следующую ветку, поправить здесь номер.",
+    "_comment_channel": "Канал задаётся полем title_pattern, а НЕ сортировкой по дате. В базе UUP свежайшие по дате записи — preview-ветки (26H1/26H2), и «взять самое новое» тихо притащит Insider вместо стабильной GA. Когда GA переедет на следующую ветку, поправить шаблон здесь. Посмотреть, что реально есть в базе: php build_uup.php --list='Windows Server'",
 
     "_comment_private": "local_subdir указывает в приватный каталог: образы Microsoft лицензия перераздавать не разрешает, поэтому они не должны попадать на публичную витрину. В каталоге обязан лежать маркер .private (docs/PRIVATE-DIRS.md).",
 
     "builds": {
+        "_comment_win11": "Ветка 26200 = Windows 11 25H2, текущая стабильная GA. Проверено сухим прогоном: 26200.9278, редакция PROFESSIONAL, 98 файлов, 8.14 ГБ.",
         "windows-11-25h2": {
             "enabled":       true,
             "local_subdir":  "Windows OS",
@@ -17,15 +18,37 @@
             "cleanup_old":   true
         },
 
-        "_comment_server": "Пример серверной записи — выключена. Чтобы включить: enabled=true и сверить title_pattern с тем, что реально отдаёт API (php build_uup.php --dry-run покажет).",
+        "_comment_server": "Серверные редакции называются иначе, чем десктопные (SERVERSTANDARD и т.п.). Значения ниже — предположение; сухой прогон печатает список реально доступных редакций и скажет, если не совпало.",
         "windows-server-2025": {
-            "enabled":       false,
+            "enabled":       true,
             "local_subdir":  "Windows OS",
             "name_template": "Windows_Server_2025_{build}_{lang}_x64.iso",
             "title_pattern": "/^Windows Server 2025/",
             "arch":          "amd64",
             "lang":          "en-us",
             "edition":       "SERVERSTANDARD",
+            "cleanup_old":   true
+        },
+        "windows-server-2022": {
+            "enabled":       true,
+            "local_subdir":  "Windows OS",
+            "name_template": "Windows_Server_2022_{build}_{lang}_x64.iso",
+            "title_pattern": "/^Windows Server 2022/",
+            "arch":          "amd64",
+            "lang":          "en-us",
+            "edition":       "SERVERSTANDARD",
+            "cleanup_old":   true
+        },
+
+        "_comment_win10": "Windows 10 в EOL с 14.10.2025 — ветка 19045 (22H2) заморожена. Соберётся один раз, дальше каждый прогон будет пропускать её как неизменившуюся. Это ожидаемо, а не поломка.",
+        "windows-10-22h2": {
+            "enabled":       true,
+            "local_subdir":  "Windows OS",
+            "name_template": "Windows_10_22H2_{build}_{lang}_x64.iso",
+            "title_pattern": "/^Windows 10, version 22H2 /",
+            "arch":          "amd64",
+            "lang":          "en-us",
+            "edition":       "PROFESSIONAL",
             "cleanup_old":   true
         }
     }

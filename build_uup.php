@@ -28,8 +28,10 @@ const UA  = 'iso-sync/1.0 (+https://github.com/erneywhite/iso-sync)';
 $args    = $argv ?? [];
 $dryRun  = in_array('--dry-run', $args, true);
 $only    = null;
+$search  = null;
 foreach ($args as $a) {
     if (str_starts_with($a, '--entry=')) $only = substr($a, 8);
+    if (str_starts_with($a, '--list='))  $search = substr($a, 7);
 }
 
 function line(string $s = ''): void { echo $s . "\n"; }
@@ -77,6 +79,54 @@ if (!is_array($cfg) || !isset($cfg['builds']) || !is_array($cfg['builds'])) {
 
 line();
 line("=== iso-sync: сборка Windows через UUP dump ===");
+
+/* ─────────── режим разведки ───────────
+   Показывает, что реально лежит в базе UUP по запросу: заголовки, номера
+   сборок, архитектуры. Нужен, чтобы задавать title_pattern по фактическим
+   данным, а не по догадке — у серверных редакций свои имена, и наличие
+   конкретной ветки в UUP надо проверять, а не предполагать. */
+if ($search !== null) {
+    line("разведка: что есть в базе по запросу «{$search}»");
+    line();
+    $r = api('/listid.php?search=' . rawurlencode($search) . '&sortByDate=1');
+    if ($r['code'] !== 200 || !is_array($r['json'])) {
+        bad('listid.php: HTTP ' . $r['code'] . ($r['error'] !== '' ? ' — ' . $r['error'] : ''));
+        exit(1);
+    }
+    $builds = $r['json']['response']['builds'] ?? [];
+    if (!is_array($builds) || $builds === []) { warn('ничего не найдено'); exit(0); }
+
+    // Только сборки ОС; группируем по заголовку без номера, чтобы из сотен
+    // ревизий одной ветки показать самую свежую и не утопить вывод.
+    $byBranch = [];
+    foreach ($builds as $key => $b) {
+        if (!is_array($b)) continue;
+        $title = (string)($b['title'] ?? '');
+        if (!UupResolver::isOsBuild($title)) continue;
+        $arch  = strtolower((string)($b['arch'] ?? ''));
+        $build = (string)($b['build'] ?? '');
+        if ($build === '' && preg_match('/\((\d{4,6}\.\d+)\)/', $title, $m)) $build = $m[1];
+        $branch = trim((string)preg_replace('/\s*\(\d{4,6}\.\d+\)\s*/', '', $title));
+        $gk = $branch . '|' . $arch;
+        if (!isset($byBranch[$gk]) || UupResolver::compareBuild($build, $byBranch[$gk]['build']) > 0) {
+            $byBranch[$gk] = ['branch' => $branch, 'arch' => $arch, 'build' => $build, 'title' => $title];
+        }
+    }
+    if ($byBranch === []) { warn('нашлись только пакеты обновлений, сборок ОС нет'); exit(0); }
+
+    uasort($byBranch, static fn($a, $b) => UupResolver::compareBuild($b['build'], $a['build']));
+    line(sprintf('  %-46s %-8s %s', 'ВЕТКА', 'АРХ', 'СВЕЖАЙШАЯ'));
+    line('  ' . str_repeat('─', 72));
+    foreach (array_slice($byBranch, 0, 30) as $g) {
+        line(sprintf('  %-46s %-8s %s', substr($g['branch'], 0, 46), $g['arch'] ?: '?', $g['build']));
+    }
+    line();
+    inf('Для нужной ветки задай title_pattern в config/uup-builds.json,');
+    inf('например: /^' . preg_quote((string)(reset($byBranch)['branch'] ?? ''), '/') . '/');
+    line();
+    exit(0);
+}
+
 if (!$dryRun) {
     line();
     warn('Сейчас реализован только сухой прогон (этап 3a).');
@@ -145,9 +195,11 @@ foreach ($cfg['builds'] as $key => $e) {
         ? ($r['json']['response']['editionList'] ?? array_keys((array)($r['json']['response']['editionFancyNames'] ?? [])))
         : [];
     $eds = array_map('strval', (array)$eds);
+    // Список показываем всегда: у серверных веток имена редакций свои, и
+    // подобрать их можно только глядя на то, что реально отдаёт API.
+    inf('доступные редакции: ' . (implode(', ', array_slice($eds, 0, 14)) ?: '(пусто)'));
     if ($edition !== '' && !in_array($edition, $eds, true)) {
-        bad("редакция {$edition} недоступна");
-        inf('доступны: ' . implode(', ', $eds));
+        bad("редакция {$edition} недоступна — поправь edition в конфиге");
         $exit = 1;
         continue;
     }
