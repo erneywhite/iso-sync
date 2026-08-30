@@ -45,8 +45,34 @@ function human(float $b): string {
     return sprintf('%.2f %s', $b, $u[$i]);
 }
 
-/** GET к API с разбором JSON. @return array{code:int,json:mixed,error:string} */
-function api(string $path): array
+/**
+ * GET к API с разбором JSON.
+ *
+ * Между вызовами выдерживается пауза, и один раз повторяем при 429: API
+ * ограничивает частоту, а прогон по нескольким записям легко упирается в лимит
+ * (на четырёх записях это ловилось стабильно).
+ *
+ * @return array{code:int,json:mixed,error:string}
+ */
+function api(string $path, bool $retryOn429 = true): array
+{
+    static $last = 0.0;
+    $wait = 1.4 - (microtime(true) - $last);
+    if ($wait > 0) usleep((int)($wait * 1_000_000));
+    $last = microtime(true);
+
+    $r = apiRaw($path);
+    if ($r['code'] === 429 && $retryOn429) {
+        warn('rate limit (429) — пауза 8 c и повтор');
+        sleep(8);
+        $last = microtime(true);
+        $r = apiRaw($path);
+    }
+    return $r;
+}
+
+/** @return array{code:int,json:mixed,error:string} */
+function apiRaw(string $path): array
 {
     $cmd = 'curl -sS --max-time 45 -A ' . escapeshellarg(UA)
          . ' -w ' . escapeshellarg("\n__CODE__%{http_code}")
@@ -138,6 +164,21 @@ line('режим: сухой прогон, ничего не качается');
 
 $exit = 0;
 
+/* Список сборок тянем ОДИН раз на весь прогон, а не по разу на запись:
+   раньше это давало лишние вызовы и упиралось в rate limit API. */
+line();
+$r = api('/listid.php?sortByDate=1');
+if ($r['code'] !== 200 || !is_array($r['json'])) {
+    bad('listid.php: HTTP ' . $r['code'] . ($r['error'] !== '' ? ' — ' . $r['error'] : ''));
+    exit(1);
+}
+$allBuilds = $r['json']['response']['builds'] ?? [];
+if (!is_array($allBuilds) || $allBuilds === []) {
+    bad('пустой список сборок');
+    exit(1);
+}
+ok('получен каталог сборок: ' . count($allBuilds));
+
 foreach ($cfg['builds'] as $key => $e) {
     if (!is_array($e) || str_starts_with((string)$key, '_comment')) continue;
     if ($only !== null && $key !== $only) continue;
@@ -151,21 +192,8 @@ foreach ($cfg['builds'] as $key => $e) {
     line("\n\033[1m[{$key}]\033[0m");
     inf("шаблон канала: {$pattern}");
 
-    /* 1. Найти сборку */
-    $r = api('/listid.php?search=' . rawurlencode(trim($pattern, '/^$ ')) . '&sortByDate=1');
-    if ($r['code'] !== 200 || !is_array($r['json'])) {
-        // Поиск по шаблону мог ничего не дать — пробуем общий список
-        $r = api('/listid.php?sortByDate=1');
-    }
-    if ($r['code'] !== 200 || !is_array($r['json'])) {
-        bad('listid.php: HTTP ' . $r['code'] . ($r['error'] !== '' ? ' — ' . $r['error'] : ''));
-        $exit = 1;
-        continue;
-    }
-    $builds = $r['json']['response']['builds'] ?? [];
-    if (!is_array($builds) || $builds === []) { bad('пустой список сборок'); $exit = 1; continue; }
-
-    $pick = UupResolver::pickBuild($builds, $pattern, $arch);
+    /* 1. Найти сборку в уже загруженном каталоге */
+    $pick = UupResolver::pickBuild($allBuilds, $pattern, $arch);
     if ($pick === null) {
         bad('под шаблон не подошла ни одна сборка ОС');
         inf('Проверь title_pattern: канал задаётся именно им.');

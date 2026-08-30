@@ -35,7 +35,21 @@ test('пакеты обновлений не считаются сборкой �
 
 test('настоящая сборка ОС распознаётся', function () {
     assertTrue(UupResolver::isOsBuild('Windows 11, version 25H2 (26200.9278)'));
-    assertTrue(UupResolver::isOsBuild('Windows Server 2025 (26100.1)'));
+    assertTrue(UupResolver::isOsBuild('Windows Server 2025 (26100.33296)'));
+});
+
+test('«Feature update to …» — это образ, а не патч', function () {
+    // Под таким заголовком в базе лежит полноценная Windows 10 22H2.
+    // Если отфильтровать его вместе с обновлениями, десятку не собрать.
+    assertTrue(UupResolver::isOsBuild('Feature update to Windows 10, version 22H2 (19045.7663)'));
+    assertTrue(UupResolver::isOsBuild('Feature update to Windows Server, version 2004 (19041.1415)'));
+});
+
+test('«Cumulative Update Preview for …» отсекается', function () {
+    // Фраза не содержит «Update for», поэтому раньше проскакивала фильтр
+    // и попадала в выдачу разведки как сборка ОС.
+    assertFalse(UupResolver::isOsBuild('Cumulative Update Preview for Windows Server 2016 (19043.844)'));
+    assertFalse(UupResolver::isOsBuild('Cumulative Update Preview for Windows 11 Version 24H2 (26100.6725)'));
 });
 
 test('заголовок без номера сборки не проходит', function () {
@@ -91,6 +105,30 @@ test('архитектура учитывается', function () use ($sample) 
 
 test('нет совпадений — null, а не случайная сборка', function () use ($sample) {
     assertEquals(null, UupResolver::pickBuild($sample, '/^Windows 42/', 'amd64'));
+});
+
+test('Windows 10 находится по фактическому заголовку из базы', function () {
+    // Реальные записи: у десятки заголовок начинается с «Feature update to»,
+    // и шаблон /^Windows 10, version 22H2/ её не находил.
+    $b = [
+        'w1' => ['uuid' => 'w1', 'title' => 'Feature update to Windows 10, version 22H2 (19045.7663)', 'build' => '19045.7663', 'arch' => 'amd64'],
+        'w2' => ['uuid' => 'w2', 'title' => 'Feature update to Windows 10, version 21H2 (19044.7663)', 'build' => '19044.7663', 'arch' => 'amd64'],
+        'w3' => ['uuid' => 'w3', 'title' => 'Cumulative Update Preview for Windows 10 Version 22H2 (19045.6282)', 'build' => '19045.6282', 'arch' => 'amd64'],
+    ];
+    $pick = UupResolver::pickBuild($b, '/^Feature update to Windows 10, version 22H2/', 'amd64');
+    assertTrue($pick !== null, 'сборка должна найтись');
+    assertEquals('w1', $pick['id']);
+    assertEquals('19045.7663', $pick['build']);
+});
+
+test('Server 2025 отделяется от накопительных обновлений', function () {
+    $b = [
+        's1' => ['uuid' => 's1', 'title' => 'Windows Server 2025 (26100.33296)', 'build' => '26100.33296', 'arch' => 'amd64'],
+        's2' => ['uuid' => 's2', 'title' => 'Cumulative Update Preview for Windows Server 2016 (19043.844)', 'build' => '19043.844', 'arch' => 'amd64'],
+        's3' => ['uuid' => 's3', 'title' => 'Windows Server, version 23H2 (25398.2330)', 'build' => '25398.2330', 'arch' => 'amd64'],
+    ];
+    $pick = UupResolver::pickBuild($b, '/^Windows Server 2025/', 'amd64');
+    assertEquals('s1', $pick['id']);
 });
 
 test('битый regex не роняет и не пропускает лишнего', function () use ($sample) {

@@ -18,7 +18,7 @@
             "cleanup_old":   true
         },
 
-        "_comment_server": "Серверные редакции называются иначе, чем десктопные (SERVERSTANDARD и т.п.). Значения ниже — предположение; сухой прогон печатает список реально доступных редакций и скажет, если не совпало.",
+        "_comment_server": "Редакции проверены разведкой: SERVERSTANDARDCORE, SERVERDATACENTER, SERVERSTANDARD, SERVERTURBINE, SERVERTURBINECORE, SERVERDATACENTERCORE. Берём SERVERSTANDARD (с рабочим столом, не Core).",
         "windows-server-2025": {
             "enabled":       true,
             "local_subdir":  "Windows OS",
@@ -29,8 +29,10 @@
             "edition":       "SERVERSTANDARD",
             "cleanup_old":   true
         },
+
+        "_comment_server2022": "Server 2022 (ветка 20348) в базе UUP ОТСУТСТВУЕТ — проверено разведкой: есть только Server 2025 (26100) и Server version 23H2 (25398), остальное по запросу 'Windows Server' это накопительные обновления и старые ветки 1809-2004. Через UUP его не собрать; если нужен — только ISO из Evaluation Center (прямой fwlink, 180 дней, конвертируется в полную ключом через DISM /Set-Edition). Запись оставлена выключенной как след проверки.",
         "windows-server-2022": {
-            "enabled":       true,
+            "enabled":       false,
             "local_subdir":  "Windows OS",
             "name_template": "Windows_Server_2022_{build}_{lang}_x64.iso",
             "title_pattern": "/^Windows Server 2022/",
@@ -40,12 +42,12 @@
             "cleanup_old":   true
         },
 
-        "_comment_win10": "Windows 10 в EOL с 14.10.2025 — ветка 19045 (22H2) заморожена. Соберётся один раз, дальше каждый прогон будет пропускать её как неизменившуюся. Это ожидаемо, а не поломка.",
+        "_comment_win10": "Заголовок в базе — 'Feature update to Windows 10, version 22H2', а не 'Windows 10, version 22H2' (проверено разведкой: 19045.7663). Под таким именем лежит полноценный образ, а не патч. Windows 10 в EOL с 14.10.2025, но ESU-обновления ещё выходят, так что ревизия может подрастать.",
         "windows-10-22h2": {
             "enabled":       true,
             "local_subdir":  "Windows OS",
             "name_template": "Windows_10_22H2_{build}_{lang}_x64.iso",
-            "title_pattern": "/^Windows 10, version 22H2 /",
+            "title_pattern": "/^Feature update to Windows 10, version 22H2/",
             "arch":          "amd64",
             "lang":          "en-us",
             "edition":       "PROFESSIONAL",

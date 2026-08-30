@@ -48,8 +48,13 @@ final class UupResolver
     public static function isOsBuild(string $title): bool
     {
         if ($title === '') return false;
-        // Явные признаки пакетов обновлений, а не установочного образа
-        if (preg_match('/\b(KB\d+|Update for|Security Update|Servicing Stack|Dynamic Update|\.NET)\b/i', $title)) {
+        // Явные признаки пакетов обновлений, а не установочного образа.
+        // «Cumulative Update» и «Update Preview» важны отдельно: фраза
+        // «Cumulative Update Preview for Windows Server 2016» не содержит
+        // «Update for» и раньше проскакивала фильтр.
+        // Внимание: «Feature update to …» НЕ исключаем — под таким заголовком
+        // в базе лежат полноценные образы (так подписана Windows 10 22H2).
+        if (preg_match('/\b(KB\d+|Cumulative Update|Update Preview|Update for|Security Update|Servicing Stack|Dynamic Update|\.NET)\b/i', $title)) {
             return false;
         }
         // У настоящей сборки в заголовке есть номер вида (26200.9278)
