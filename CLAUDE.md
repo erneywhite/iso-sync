@@ -95,9 +95,16 @@ git fetch origin main && git reset --hard origin/main
     в nginx тем же списком IP. Держать оба слоя синхронными.
   - Признак живёт маркером на диске, а НЕ в конфиге: битый конфиг молча отключил
     бы фильтр (fail-open на том, что прячем).
-  - Клиент определяется по `REMOTE_ADDR`; `X-Forwarded-For` намеренно НЕ
-    используется (подделывается → открыл бы листинг любому). За CDN чинить
-    через `set_real_ip_from`/`real_ip_header` в nginx, не в PHP.
+  - Клиент определяется по `REMOTE_ADDR`. `X-Forwarded-For` читается ТОЛЬКО
+    если `REMOTE_ADDR` есть в `config/trusted-proxies.txt` (по умолчанию файл
+    пуст = не доверяем никому); цепочка разбирается справа налево.
+  - **Прод — aaPanel в связке nginx + Apache**: PHP под Apache видит
+    `REMOTE_ADDR = 127.0.0.1`, настоящий адрес в `X-Forwarded-For`. Чинится
+    `mod_remoteip` в Apache (НЕ `set_real_ip_from` — это директива nginx, а
+    `REMOTE_ADDR` ставит Apache) либо `trusted-proxies.txt`. Диагностика:
+    `/whoami.php` (временный, удаляется после) и `diag_private.php`.
+    nginx стоит фронтом и видит настоящий IP, поэтому `allow`/`deny` для файлов
+    этой проблемой НЕ затронуты — кривой адрес получает только PHP.
   - Любой новый вывод имён файлов в UI проверять на утечку приватных имён.
 
 ## Отложенные идеи (не срочные)

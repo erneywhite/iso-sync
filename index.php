@@ -34,7 +34,7 @@ $hashCache = new HashCache($cacheDir);
    распарситься (ниже есть catch, который просто рисует UI без missing-блока), и
    тогда фильтрация молча отключилась бы — fail-open ровно на том, что прячем.
    Маркер лежит рядом с данными и от валидности конфига не зависит. */
-$clientIp     = PrivateDirs::clientIp($_SERVER);
+$clientIp     = PrivateDirs::clientIp($_SERVER, PrivateDirs::trustedProxies($baseDir . '/config'));
 $hidden       = PrivateDirs::scan($filesDir, $clientIp);
 $privateDirs  = $hidden['dirs'];    // имя каталога => true (скрыть от этого клиента)
 $privateNames = $hidden['files'];   // basename файла внутри скрытого каталога => true

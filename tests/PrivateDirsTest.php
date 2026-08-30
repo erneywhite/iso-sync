@@ -201,6 +201,62 @@ test('clientIp: берёт REMOTE_ADDR и игнорирует X-Forwarded-For',
     assertEquals(null, PrivateDirs::clientIp(['REMOTE_ADDR' => '  ']));
 });
 
+// ---------- clientIp с доверенными прокси ----------
+
+test('trusted: XFF читается только когда REMOTE_ADDR — доверенный прокси', function () {
+    $server = ['REMOTE_ADDR' => '127.0.0.1', 'HTTP_X_FORWARDED_FOR' => '46.109.196.152'];
+    assertEquals('127.0.0.1', PrivateDirs::clientIp($server), 'без списка доверия — как раньше');
+    assertEquals('46.109.196.152', PrivateDirs::clientIp($server, ['127.0.0.1']));
+});
+
+test('trusted: недоверенный REMOTE_ADDR не может подставить XFF', function () {
+    // Злоумышленник шлёт заголовок напрямую, минуя прокси
+    $server = ['REMOTE_ADDR' => '198.51.100.9', 'HTTP_X_FORWARDED_FOR' => '46.109.196.152'];
+    assertEquals('198.51.100.9', PrivateDirs::clientIp($server, ['127.0.0.1']),
+        'XFF от чужого адреса должен игнорироваться');
+});
+
+test('trusted: цепочка XFF разбирается справа налево', function () {
+    // client, доверенный_прокси2 → клиентом считаем самый правый недоверенный
+    $server = [
+        'REMOTE_ADDR'          => '127.0.0.1',
+        'HTTP_X_FORWARDED_FOR' => '203.0.113.7, 10.0.0.5',
+    ];
+    assertEquals('203.0.113.7', PrivateDirs::clientIp($server, ['127.0.0.1', '10.0.0.0/8']));
+});
+
+test('trusted: подставленный слева адрес не побеждает настоящий', function () {
+    // Клиент сам прислал X-Forwarded-For: 1.2.3.4, прокси дописал его реальный
+    $server = [
+        'REMOTE_ADDR'          => '127.0.0.1',
+        'HTTP_X_FORWARDED_FOR' => '1.2.3.4, 46.109.196.152',
+    ];
+    assertEquals('46.109.196.152', PrivateDirs::clientIp($server, ['127.0.0.1']),
+        'берём правый недоверенный, а не то, что подставил клиент');
+});
+
+test('trusted: X-Real-IP как запасной вариант при отсутствии XFF', function () {
+    $server = ['REMOTE_ADDR' => '127.0.0.1', 'HTTP_X_REAL_IP' => '46.109.196.152'];
+    assertEquals('46.109.196.152', PrivateDirs::clientIp($server, ['127.0.0.1']));
+});
+
+test('trusted: мусор в XFF не проходит', function () {
+    $server = ['REMOTE_ADDR' => '127.0.0.1', 'HTTP_X_FORWARDED_FOR' => 'not-an-ip'];
+    assertEquals('127.0.0.1', PrivateDirs::clientIp($server, ['127.0.0.1']),
+        'невалидные значения отбрасываются, остаёмся на прокси');
+});
+
+test('trustedProxies: закомментированный файл = никому не доверяем', function () use ($tmpRoot) {
+    $cfg = $tmpRoot . '/cfg_a';
+    @mkdir($cfg, 0755, true);
+    file_put_contents($cfg . '/trusted-proxies.txt', "# ничего\n#127.0.0.1\n");
+    assertEquals([], PrivateDirs::trustedProxies($cfg));
+});
+
+test('trustedProxies: отсутствующий файл = пустой список', function () use ($tmpRoot) {
+    assertEquals([], PrivateDirs::trustedProxies($tmpRoot . '/cfg_missing'));
+});
+
 test('подделанный XFF не открывает приватный каталог', function () use ($tmpRoot, $makeDir) {
     $root = $tmpRoot . '/scan_g';
     $makeDir($root, 'Windows OS', "203.0.113.42\n", ['Win11.iso']);

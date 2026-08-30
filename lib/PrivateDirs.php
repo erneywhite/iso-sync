@@ -78,21 +78,72 @@ final class PrivateDirs
     }
 
     /**
+     * Список доверенных прокси из config/trusted-proxies.txt.
+     *
+     * Пустой список (файла нет или всё закомментировано) = не доверяем никому,
+     * X-Forwarded-For игнорируется.
+     *
+     * @return list<string>
+     */
+    public static function trustedProxies(string $configDir): array
+    {
+        return self::parseAllowlist($configDir . DIRECTORY_SEPARATOR . 'trusted-proxies.txt');
+    }
+
+    /**
      * IP клиента.
      *
-     * Намеренно берём только REMOTE_ADDR и НЕ смотрим X-Forwarded-For: этот
-     * заголовок подделывается кем угодно, и доверие к нему открыло бы приватный
-     * листинг любому, кто его подставит. Если сайт стоит за CDN/прокси и
-     * REMOTE_ADDR показывает адрес прокси — чинить надо на уровне nginx
-     * (ngx_http_realip_module: set_real_ip_from + real_ip_header), тогда сюда
-     * приедет уже настоящий адрес клиента.
+     * По умолчанию — только REMOTE_ADDR: X-Forwarded-For подделывается кем
+     * угодно, и слепое доверие к нему открыло бы приватный листинг любому, кто
+     * подставит заголовок.
      *
-     * @param array<string,mixed> $server обычно $_SERVER
+     * Заголовок читается ТОЛЬКО если сам REMOTE_ADDR попал в список доверенных
+     * прокси. Это классическая связка nginx → Apache → PHP (aaPanel): Apache
+     * видит соединение с 127.0.0.1, а настоящий адрес приезжает в заголовке.
+     * Цепочка XFF разбирается справа налево — первый адрес, не являющийся
+     * доверенным прокси, и есть клиент (то, что левее, мог дописать он сам).
+     *
+     * Более чистая альтернатива — починить на уровне веб-сервера
+     * (Apache mod_remoteip, nginx set_real_ip_from), тогда сюда приедет уже
+     * настоящий REMOTE_ADDR и список доверенных прокси не нужен.
+     *
+     * @param array<string,mixed> $server         обычно $_SERVER
+     * @param list<string>        $trustedProxies IP/CIDR прокси, которым доверяем
      */
-    public static function clientIp(array $server): ?string
+    public static function clientIp(array $server, array $trustedProxies = []): ?string
     {
-        $ip = trim((string)($server['REMOTE_ADDR'] ?? ''));
-        return $ip !== '' ? $ip : null;
+        $remote = self::cleanToken((string)($server['REMOTE_ADDR'] ?? ''));
+        if ($remote === '') {
+            return null;
+        }
+        // Не доверяем никому либо пришли не от прокси — адрес как есть
+        if ($trustedProxies === [] || !self::ipAllowed($remote, $trustedProxies)) {
+            return $remote;
+        }
+
+        // Цепочка X-Forwarded-For: client, proxy1, proxy2...
+        $chain = [];
+        foreach (explode(',', (string)($server['HTTP_X_FORWARDED_FOR'] ?? '')) as $part) {
+            $p = self::cleanToken($part);
+            if ($p !== '' && self::toBinary($p) !== null) {
+                $chain[] = $p;
+            }
+        }
+        for ($i = count($chain) - 1; $i >= 0; $i--) {
+            if (!self::ipAllowed($chain[$i], $trustedProxies)) {
+                return $chain[$i];
+            }
+        }
+        if ($chain !== []) {
+            return $chain[0];   // вся цепочка из доверенных прокси
+        }
+
+        // XFF нет — пробуем X-Real-IP (nginx ставит его одним значением)
+        $real = self::cleanToken((string)($server['HTTP_X_REAL_IP'] ?? ''));
+        if ($real !== '' && self::toBinary($real) !== null) {
+            return $real;
+        }
+        return $remote;
     }
 
     /**

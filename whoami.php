@@ -23,11 +23,18 @@ require_once __DIR__ . '/lib/bootstrap.php';
 use IsoSync\PrivateDirs;
 
 $filesDir = __DIR__ . '/files';
-$ip       = PrivateDirs::clientIp($_SERVER);
+$trusted  = PrivateDirs::trustedProxies(__DIR__ . '/config');
+$remote   = (string)($_SERVER['REMOTE_ADDR'] ?? '');
+$ip       = PrivateDirs::clientIp($_SERVER, $trusted);
 
 echo "=== Каким тебя видит сервер ===\n\n";
 
-echo "REMOTE_ADDR : " . ($ip ?? '(не определён)') . "\n";
+echo "REMOTE_ADDR       : " . ($remote !== '' ? $remote : '(не определён)') . "\n";
+echo "доверенных прокси : " . (count($trusted) ?: '0 (X-Forwarded-For игнорируется)') . "\n";
+foreach ($trusted as $t) {
+    echo "    " . $t . "\n";
+}
+echo "итоговый IP       : " . ($ip ?? '(не определён)') . "\n";
 echo "  ^ именно это значение сравнивается с правилами в .private\n\n";
 
 /* ─── Признаки прокси ─── */
@@ -62,13 +69,46 @@ if ($present === []) {
             ? trim(explode(',', $present['HTTP_X_FORWARDED_FOR'])[0])
             : null);
     if ($realCandidate !== null && $realCandidate !== $ip) {
-        echo "!! Настоящий адрес клиента, похоже: {$realCandidate}\n";
-        echo "   а PHP видит {$ip} — это адрес прокси.\n";
-        echo "   Чинится в nginx (НЕ в PHP: заголовок подделывается кем угодно):\n\n";
-        echo "     set_real_ip_from " . $ip . ";\n";
-        echo "     real_ip_header   "
-            . (isset($present['HTTP_CF_CONNECTING_IP']) ? 'CF-Connecting-IP' : 'X-Forwarded-For') . ";\n\n";
-        echo "   После этого REMOTE_ADDR станет настоящим, и allowlist заработает.\n\n";
+        $hdr = isset($present['HTTP_CF_CONNECTING_IP']) ? 'CF-Connecting-IP' : 'X-Forwarded-For';
+        // Петля/приватная сеть в REMOTE_ADDR = локальный обратный прокси
+        // (обычно nginx → Apache), а не внешний CDN.
+        $isLocalProxy = $remote !== '' && (
+            $remote === '127.0.0.1' || $remote === '::1'
+            || filter_var($remote, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE) === false
+        );
+        $sapi = PHP_SAPI;
+        $viaApache = str_contains(strtolower((string)($_SERVER['SERVER_SOFTWARE'] ?? '')), 'apache')
+            || str_contains($sapi, 'apache');
+
+        echo "!! Настоящий адрес клиента: {$realCandidate}\n";
+        echo "   PHP видит {$remote} — это прокси, поэтому allowlist не срабатывает.\n\n";
+        echo "   SAPI: {$sapi}   SERVER_SOFTWARE: "
+            . ((string)($_SERVER['SERVER_SOFTWARE'] ?? '?')) . "\n\n";
+
+        if ($isLocalProxy && $viaApache) {
+            echo "   Топология: nginx (фронт) → Apache → PHP.\n";
+            echo "   Чинить надо в APACHE — set_real_ip_from это директива nginx,\n";
+            echo "   а REMOTE_ADDR сюда ставит именно Apache:\n\n";
+            echo "     # a2enmod remoteip  (или LoadModule remoteip_module ...)\n";
+            echo "     RemoteIPHeader        {$hdr}\n";
+            echo "     RemoteIPInternalProxy {$remote}\n\n";
+            echo "   Затем перезапустить Apache.\n\n";
+        } elseif ($isLocalProxy) {
+            echo "   Топология: локальный обратный прокси перед PHP.\n";
+            echo "   Чинить на стороне того сервера, который запускает PHP:\n";
+            echo "     Apache : RemoteIPHeader {$hdr} + RemoteIPInternalProxy {$remote}\n";
+            echo "     nginx  : set_real_ip_from {$remote}; real_ip_header {$hdr};\n\n";
+        } else {
+            echo "   Похоже на внешний CDN/прокси. В nginx:\n\n";
+            echo "     set_real_ip_from {$remote};\n";
+            echo "     real_ip_header   {$hdr};\n\n";
+        }
+
+        echo "   Быстрая альтернатива без правки конфигов веб-сервера —\n";
+        echo "   раскомментировать адрес прокси в config/trusted-proxies.txt:\n\n";
+        echo "     {$remote}\n\n";
+        echo "   Но сперва убедись, что до бэкенда нельзя достучаться снаружи\n";
+        echo "   (иначе заголовок подставит кто угодно):  ss -tlnp | grep 8181\n\n";
     }
 }
 
