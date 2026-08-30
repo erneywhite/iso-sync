@@ -98,13 +98,16 @@ git fetch origin main && git reset --hard origin/main
   - Клиент определяется по `REMOTE_ADDR`. `X-Forwarded-For` читается ТОЛЬКО
     если `REMOTE_ADDR` есть в `config/trusted-proxies.txt` (по умолчанию файл
     пуст = не доверяем никому); цепочка разбирается справа налево.
-  - **Прод — aaPanel в связке nginx + Apache**: PHP под Apache видит
-    `REMOTE_ADDR = 127.0.0.1`, настоящий адрес в `X-Forwarded-For`. Чинится
-    `mod_remoteip` в Apache (НЕ `set_real_ip_from` — это директива nginx, а
-    `REMOTE_ADDR` ставит Apache) либо `trusted-proxies.txt`. Диагностика:
-    `/whoami.php` (временный, удаляется после) и `diag_private.php`.
-    nginx стоит фронтом и видит настоящий IP, поэтому `allow`/`deny` для файлов
-    этой проблемой НЕ затронуты — кривой адрес получает только PHP.
+  - **Прод — nginx-only** (aaPanel, Apache убран 2026-08-30 как лишний хоп для
+    файловой раздачи). `REMOTE_ADDR` настоящий, `trusted-proxies.txt` не нужен.
+  - Грабля на будущее: если перед сайтом снова появится прокси (Apache-бэкенд,
+    Cloudflare, docker), PHP начнёт видеть адрес прокси и allowlist перестанет
+    срабатывать — симптом «правило верное, `diag_private.php` says «будет
+    виден», а каталог скрыт». Чинить там, где стартует PHP: под Apache это
+    `mod_remoteip`, а НЕ `set_real_ip_from` (директива nginx). Диагностика —
+    `diag_private.php`; для просмотра живого `REMOTE_ADDR` есть временный
+    `whoami.php` — вырезан из репозитория, поднимать из истории:
+    `git show 48d645f:whoami.php > whoami.php` (удалять после использования).
   - Любой новый вывод имён файлов в UI проверять на утечку приватных имён.
 
 ## Отложенные идеи (не срочные)
