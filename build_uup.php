@@ -200,7 +200,8 @@ if ($dryRun) {
     register_shutdown_function(static function () use ($lock) { $lock->release(); });
 }
 
-$exit = 0;
+$exit     = 0;
+$builtAny = false;
 
 /* Список сборок тянем ОДИН раз на весь прогон, а не по разу на запись:
    раньше это давало лишние вызовы и упиралось в rate limit API. */
@@ -240,6 +241,25 @@ foreach ($cfg['builds'] as $key => $e) {
     }
     ok('сборка: ' . $pick['title']);
     inf('build: ' . $pick['build'] . '   id: ' . $pick['id']);
+
+    /* Ранний выход, если пересобирать нечего.
+       Проверку делаем ДО остальных вызовов API: при еженедельном запуске
+       апстрим меняется раз в месяц, и три лишних запроса на запись в
+       остальные недели — это просто риск упереться в rate limit. */
+    $earlyName = UupResolver::localName(
+        (string)($e['name_template'] ?? '{build}.iso'),
+        $pick['build'], $lang, $edition
+    );
+    $earlyTarget = __DIR__ . '/files'
+        . ((string)($e['local_subdir'] ?? '') !== '' ? '/' . (string)$e['local_subdir'] : '')
+        . '/' . $earlyName;
+    if (!$dryRun
+        && is_file($earlyTarget)
+        && !UupResolver::needsRebuild($pick['build'], (string)($state[$key]['build'] ?? ''))
+    ) {
+        ok('уже собрано — пропуск (' . $earlyName . ')');
+        continue;
+    }
 
     /* 2. Язык и редакция — сверяем с тем, что реально доступно */
     $id = rawurlencode($pick['id']);
@@ -433,7 +453,11 @@ foreach ($cfg['builds'] as $key => $e) {
         }
         @unlink($iso);
     }
-    @chmod($target, 0644);
+    // 0644 — ISO это данные, а не программа. Соседние файлы, залитые через
+    // панель, бывают 0755, но бит исполнения им не нужен; выравниваться на
+    // него не станем. Переопределяется file_mode в конфиге.
+    $mode = $cfg['file_mode'] ?? 0644;
+    @chmod($target, is_int($mode) ? $mode : (int)octdec((string)$mode));
     ok('размещён: ' . $name);
 
     /* 9. Ротация прошлых версий */
@@ -451,13 +475,18 @@ foreach ($cfg['builds'] as $key => $e) {
     $state[$key] = ['build' => $pick['build'], 'iso' => $name, 'built_at' => date('c')];
     UupBuilder::saveState($statePath, $state);
     rmrf($entryWork);
+    $builtAny = true;
     ok('готово: ' . $key . ' → ' . $pick['build']);
     $log->info('UUP: сборка завершена', ['entry' => $key, 'build' => $pick['build'], 'iso' => $name]);
 }
 
-if (!$dryRun) {
+/* Пересчёт хэшей — так же, как это делает update_iso.php в конце прогона.
+   Без этого свежий образ висел бы в UI без SHA256 до следующего часового
+   крона на generate_all_hashes. */
+if (!$dryRun && $builtAny) {
     line();
-    inf('Хэши пересчитываются отдельно: php generate_all_hashes.php');
+    inf('пересчитываю SHA256…');
+    require __DIR__ . '/generate_all_hashes.php';
 }
 
 line();
