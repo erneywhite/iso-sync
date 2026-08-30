@@ -160,13 +160,23 @@ h('4. Реальные IP из access-логов nginx');
 warn('PHP видит клиента как REMOTE_ADDR. Если тут твой адрес выглядит иначе,');
 warn('чем в .private (например IPv6 вместо IPv4) — вот и причина.');
 
-$logCandidates = glob('/www/wwwlogs/*.log') ?: [];
+$logCandidates = array_merge(
+    glob('/www/wwwlogs/*.log') ?: [],
+    glob('/var/log/nginx/*access*.log') ?: []
+);
 $logCandidates = array_values(array_filter($logCandidates, static fn($p) => !str_contains($p, 'error')));
-if ($logCandidates === []) {
-    $logCandidates = array_merge(
-        glob('/var/log/nginx/*access*.log') ?: [],
-        glob('/www/wwwlogs/*.log') ?: []
-    );
+
+// Лог ИМЕННО этого сайта — вперёд остальных. Без этого нужный файл легко
+// теряется среди логов соседних сайтов (по алфавиту он может быть далеко).
+$siteName = basename(__DIR__);
+usort($logCandidates, static function (string $a, string $b) use ($siteName): int {
+    $sa = str_contains(basename($a), $siteName) ? 0 : 1;
+    $sb = str_contains(basename($b), $siteName) ? 0 : 1;
+    return $sa <=> $sb ?: strcmp($a, $b);
+});
+$siteLogFound = $logCandidates !== [] && str_contains(basename($logCandidates[0]), $siteName);
+if (!$siteLogFound) {
+    warn("лог именно для «{$siteName}» не найден — показываю общие");
 }
 
 if ($logCandidates === []) {
@@ -174,8 +184,9 @@ if ($logCandidates === []) {
     info('Найди лог сайта вручную и посмотри последние строки:');
     info('  tail -50 /путь/к/access.log | awk \'{print $1}\' | sort | uniq -c | sort -rn');
 } else {
-    foreach (array_slice($logCandidates, 0, 3) as $log) {
-        echo "\n  \033[1m{$log}\033[0m\n";
+    foreach (array_slice($logCandidates, 0, 6) as $i => $log) {
+        $tag = ($i === 0 && $siteLogFound) ? "  \033[32m← лог этого сайта\033[0m" : '';
+        echo "\n  \033[1m{$log}\033[0m{$tag}\n";
         $lines = @shell_exec('tail -n 400 ' . escapeshellarg($log) . ' 2>/dev/null');
         if (!is_string($lines) || trim($lines) === '') {
             info('(пусто или нет прав на чтение)');
