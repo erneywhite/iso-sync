@@ -41,15 +41,40 @@ final class PrivateDirs
             return [];
         }
 
+        // UTF-8 BOM от блокнотных редакторов: иначе первое правило приезжает
+        // как "\xEF\xBB\xBF203.0.113.42" и молча не матчится.
+        if (str_starts_with($raw, "\xEF\xBB\xBF")) {
+            $raw = substr($raw, 3);
+        }
+
         $rules = [];
         foreach (preg_split('/\R/', $raw) ?: [] as $line) {
             // Комментарий может идти и в конце строки: "10.0.0.0/8  # офис"
-            $line = trim((string)preg_replace('/#.*$/', '', $line));
-            if ($line !== '') {
-                $rules[] = $line;
-            }
+            $line = (string)preg_replace('/#.*$/', '', $line);
+            $rules[] = self::cleanToken($line);
         }
-        return $rules;
+        return array_values(array_filter($rules, static fn(string $r): bool => $r !== ''));
+    }
+
+    /**
+     * Чистка строки правила от невидимого мусора.
+     *
+     * IP часто копируют с сайтов «какой у меня IP», и вместе с адресом
+     * приезжают неразрывные пробелы, zero-width и LTR/RTL-марки. Обычный trim()
+     * их не берёт, inet_pton на таком падает, и правило тихо не срабатывает —
+     * симптом «вписал свой IP, а каталог всё равно не виден».
+     */
+    private static function cleanToken(string $s): string
+    {
+        // NBSP, узкий NBSP, zero-width space/joiner, BOM в середине, LTR/RTL-марки
+        $cleaned = preg_replace(
+            '/[\x{00A0}\x{202F}\x{200B}\x{200C}\x{200D}\x{2060}\x{FEFF}\x{200E}\x{200F}]/u',
+            '',
+            $s
+        );
+        // На битом UTF-8 preg_replace с /u вернёт null — тогда работаем с
+        // исходной строкой, а не молча теряем правило
+        return trim($cleaned ?? $s);
     }
 
     /**
@@ -95,7 +120,7 @@ final class PrivateDirs
      */
     public static function matchRule(string $ip, string $rule): bool
     {
-        $rule = trim($rule);
+        $rule = self::cleanToken($rule);
         if ($rule === '') {
             return false;
         }
@@ -205,7 +230,7 @@ final class PrivateDirs
      */
     private static function toBinary(string $ip): ?string
     {
-        $ip = trim($ip);
+        $ip = self::cleanToken($ip);
         if ($ip === '') {
             return null;
         }

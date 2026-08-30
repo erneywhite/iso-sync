@@ -105,6 +105,32 @@ test('parseAllowlist: только комментарии = пустой спи�
     assertEquals([], PrivateDirs::parseAllowlist($dir . '/' . PrivateDirs::MARKER));
 });
 
+test('parseAllowlist: UTF-8 BOM не ломает первое правило', function () use ($tmpRoot, $makeDir) {
+    $dir = $makeDir($tmpRoot, 'parse_bom', "\xEF\xBB\xBF203.0.113.42\n");
+    $rules = PrivateDirs::parseAllowlist($dir . '/' . PrivateDirs::MARKER);
+    assertEquals(['203.0.113.42'], $rules);
+    assertTrue(PrivateDirs::ipAllowed('203.0.113.42', $rules), 'правило из BOM-файла должно работать');
+});
+
+test('parseAllowlist: CRLF-переводы строк', function () use ($tmpRoot, $makeDir) {
+    $dir = $makeDir($tmpRoot, 'parse_crlf', "203.0.113.42\r\n198.51.100.0/24\r\n");
+    assertEquals(['203.0.113.42', '198.51.100.0/24'], PrivateDirs::parseAllowlist($dir . '/' . PrivateDirs::MARKER));
+});
+
+test('parseAllowlist: невидимый мусор из копипаста вычищается', function () use ($tmpRoot, $makeDir) {
+    // NBSP вокруг адреса + zero-width space внутри — типично при копировании
+    // IP с сайта «какой у меня IP»
+    $dir = $makeDir($tmpRoot, 'parse_nbsp', "\u{00A0}203.0.113.42\u{200B}\u{00A0}\n");
+    $rules = PrivateDirs::parseAllowlist($dir . '/' . PrivateDirs::MARKER);
+    assertEquals(['203.0.113.42'], $rules);
+    assertTrue(PrivateDirs::ipAllowed('203.0.113.42', $rules));
+});
+
+test('matchRule: NBSP в правиле не мешает', function () {
+    assertTrue(PrivateDirs::matchRule('203.0.113.42', "\u{00A0}203.0.113.42"));
+    assertTrue(PrivateDirs::matchRule("\u{00A0}203.0.113.42\u{200B}", '203.0.113.42'));
+});
+
 // ---------- ipAllowed ----------
 
 test('ipAllowed: пустой allowlist = приватно для всех', function () {
