@@ -47,6 +47,9 @@ function cut(string $s, int $len): string {
 
 $problems = [];
 $warnings = [];
+// --offline: пропустить сетевые разделы. Нужен для smoke-прогона в CI —
+// он ловит runtime-ошибки скрипта до того, как их увидят на сервере.
+$offline = in_array('--offline', $argv ?? [], true);
 
 echo "\n=== iso-sync: готовность сервера к сборке через UUP dump ===\n";
 echo "PHP " . PHP_VERSION . " (" . PHP_SAPI . "), " . php_uname('s') . ' ' . php_uname('r') . "\n";
@@ -91,14 +94,36 @@ if (!$haveAny) {
     info('Сборку придётся вешать отдельным shell-скриптом в cron, минуя PHP');
 }
 
-/** Безопасный вызов команды. */
+/**
+ * Безопасный вызов команды.
+ *
+ * Команда оборачивается в `sh -c`: без этого `timeout` пытается выполнить
+ * первое слово как файл программы и спотыкается на встроенных командах шелла
+ * (`command -v`), возвращая ошибку вместо результата.
+ */
 function run(string $cmd, int $timeout = 30): string {
     if (!function_exists('shell_exec')) return '';
-    return (string)@shell_exec('timeout ' . $timeout . ' ' . $cmd . ' 2>&1');
+    static $hasTimeout = null;
+    if ($hasTimeout === null) {
+        $hasTimeout = trim((string)@shell_exec('command -v timeout 2>/dev/null')) !== '';
+    }
+    $full = $hasTimeout
+        ? 'timeout ' . $timeout . ' sh -c ' . escapeshellarg($cmd)
+        : $cmd;
+    return (string)@shell_exec($full . ' 2>&1');
 }
+
+/**
+ * Путь до бинарника или null. Результат ВАЛИДИРУЕТСЯ: сообщения об ошибках
+ * тоже непустые, и без проверки они засчитывались бы как найденный путь.
+ */
 function which(string $bin): ?string {
-    $p = trim(run('command -v ' . escapeshellarg($bin)));
-    return $p !== '' && !str_contains($p, 'not found') ? $p : null;
+    $out  = run('command -v ' . escapeshellarg($bin), 8);
+    $line = trim((string)strtok($out, "\n"));
+    if ($line === '' || $line[0] !== '/' || !is_file($line) || !is_executable($line)) {
+        return null;
+    }
+    return $line;
 }
 
 /* ─────────── 2. Тулчейн ─────────── */
@@ -124,10 +149,13 @@ $haveIso    = false;
 foreach ($tools as $bin => $meta) {
     $path = which($bin);
     if ($path !== null) {
+        // Только явные version-флаги: запуск без аргументов у части утилит
+        // (xorriso) уходит в интерактивный режим.
         $ver = '';
-        foreach ([' --version', ' -V', ''] as $flag) {
-            $out = trim(run(escapeshellarg($path) . $flag, 8));
-            if ($out !== '') { $ver = strtok($out, "\n") ?: ''; break; }
+        foreach ([' --version', ' -V'] as $vflag) {
+            $out = trim(run(escapeshellarg($path) . $vflag, 8));
+            $first = trim((string)strtok($out, "\n"));
+            if ($first !== '' && !str_contains($first, 'failed to run')) { $ver = $first; break; }
         }
         ok(sprintf('%-14s %s', $bin, $ver !== '' ? cut($ver, 46) : $path));
         if (in_array($bin, ['genisoimage', 'mkisofs', 'xorriso'], true)) $haveIso = true;
@@ -217,7 +245,15 @@ $apiOkV4 = false;
 $buildId = null;
 $buildTitle = null;
 
-foreach (['-4' => 'IPv4', '-6' => 'IPv6'] as $flag => $label) {
+// Пары списком, а не ключами массива: PHP приводит числовые строки ('-4')
+// к int, и под strict_types вызов fetch() падал бы с TypeError.
+if ($offline) {
+    info('пропущено (--offline)');
+}
+
+// Пары списком, а не ключами массива: PHP приводит числовые строки ('-4')
+// к int, и под strict_types вызов fetch() падал бы с TypeError.
+foreach ($offline ? [] : [['-4', 'IPv4'], ['-6', 'IPv6']] as [$flag, $label]) {
     $r = fetch(API . '/listid.php?search=Windows%2011&sortByDate=1', $flag, 25);
     if ($r === null) { bad("{$label}: нет ответа (таймаут или curl недоступен)"); continue; }
     [$code, $time, $body] = $r;
@@ -248,7 +284,7 @@ foreach (['-4' => 'IPv4', '-6' => 'IPv6'] as $flag => $label) {
         }
     }
 }
-if (!$apiOkV4) {
+if (!$apiOkV4 && !$offline) {
     $problems[] = 'API UUP dump недоступен по IPv4';
 }
 
@@ -261,7 +297,9 @@ echo "\n";
 $fileUrl  = null;
 $fileName = null;
 
-if ($buildId === null || $buildId === '') {
+if ($offline) {
+    info('пропущено (--offline)');
+} elseif ($buildId === null || $buildId === '') {
     warn('нет id сборки из раздела 4 — пропускаю проверку CDN');
     $warnings[] = 'не удалось получить ссылки на файлы MS (API не отдал сборку)';
 } else {
@@ -294,7 +332,7 @@ if ($buildId === null || $buildId === '') {
 
 if ($fileUrl !== null) {
     $tmp = sys_get_temp_dir() . '/iso_sync_uup_probe.bin';
-    foreach (['-4' => 'IPv4', '-6' => 'IPv6'] as $flag => $label) {
+    foreach ([['-4', 'IPv4'], ['-6', 'IPv6']] as [$flag, $label]) {
         @unlink($tmp);
         $r = fetch($fileUrl, $flag, 40, [
             '-H ' . escapeshellarg('Range: bytes=0-1048575'),

@@ -53,3 +53,11 @@ jobs:
 
       - name: Run tests
         run: php tests/run.php
+
+      # Диагностические скрипты тестами не покрыты, а php -l ловит только
+      # синтаксис. Прогон вхолостую отлавливает runtime-ошибки (TypeError,
+      # обращение к отсутствующим функциям) до того, как их увидят на сервере.
+      - name: Smoke-run diagnostics
+        run: |
+          php diag_uup.php --offline
+          php diag_private.php
