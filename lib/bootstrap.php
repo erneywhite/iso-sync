@@ -10,6 +10,7 @@ require_once __DIR__ . '/Logger.php';
 require_once __DIR__ . '/Config.php';
 require_once __DIR__ . '/ChecksumParser.php';
 require_once __DIR__ . '/HashCache.php';
+require_once __DIR__ . '/PrivateDirs.php';
 require_once __DIR__ . '/Lock.php';
 require_once __DIR__ . '/Http.php';
 require_once __DIR__ . '/GpgVerifier.php';

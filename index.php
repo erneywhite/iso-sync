@@ -11,6 +11,7 @@ require_once __DIR__ . '/lib/bootstrap.php';
 
 use IsoSync\Config;
 use IsoSync\HashCache;
+use IsoSync\PrivateDirs;
 
 $baseDir   = __DIR__;
 $filesDir  = $baseDir . '/files';
@@ -23,27 +24,20 @@ $hashCache = new HashCache($cacheDir);
 
 /* ===== Приватные каталоги =====
    Каталог с файлом-маркером `.private` не попадает ни в листинг, ни в тоталы,
-   ни в спарклайн, ни в «Историю». Это только витрина: саму раздачу закрывает
-   веб-сервер (basic auth на каталог) — см. docs/PRIVATE-DIRS.md.
+   ни в спарклайн, ни в «Историю» — кроме случая, когда IP клиента попал в
+   allowlist внутри самого маркера. Логика и разбор — в lib/PrivateDirs.php.
+
+   Это только витрина: саму раздачу закрывает веб-сервер (allow/deny с тем же
+   списком IP) — см. docs/PRIVATE-DIRS.md.
 
    Почему маркер на диске, а не поле в config/iso-list.json: конфиг может не
    распарситься (ниже есть catch, который просто рисует UI без missing-блока), и
    тогда фильтрация молча отключилась бы — fail-open ровно на том, что прячем.
    Маркер лежит рядом с данными и от валидности конфига не зависит. */
-$privateDirs  = [];   // имя каталога => true
-$privateNames = [];   // basename файла внутри приватного каталога => true
-if (is_dir($filesDir)) {
-    foreach (scandir($filesDir) ?: [] as $name) {
-        if ($name === '.' || $name === '..') continue;
-        $path = $filesDir . DIRECTORY_SEPARATOR . $name;
-        if (!is_dir($path) || !is_file($path . DIRECTORY_SEPARATOR . '.private')) continue;
-        $privateDirs[$name] = true;
-        foreach (scandir($path) ?: [] as $c) {
-            if (str_starts_with($c, '.')) continue;
-            if (is_file($path . DIRECTORY_SEPARATOR . $c)) $privateNames[$c] = true;
-        }
-    }
-}
+$clientIp     = PrivateDirs::clientIp($_SERVER);
+$hidden       = PrivateDirs::scan($filesDir, $clientIp);
+$privateDirs  = $hidden['dirs'];    // имя каталога => true (скрыть от этого клиента)
+$privateNames = $hidden['files'];   // basename файла внутри скрытого каталога => true
 
 // Сводка последнего прогона update_iso (если есть)
 $lastRun = null;
@@ -197,6 +191,9 @@ if (is_dir($filesDir)) {
                 'type'     => 'dir',
                 'size'     => $dirSize,
                 'children' => $children,
+                // Каталог приватный, но показан — значит клиент попал в allowlist.
+                // Помечаем бейджем, чтобы не спутать его с публичной раздачей.
+                'private'  => PrivateDirs::isPrivate($path),
             ];
         } elseif (is_file($path)) {
             $size = (int)filesize($path);
@@ -841,6 +838,19 @@ h1{
     padding:2px 8px;border-radius:999px;
     font-size:11px;font-weight:700;letter-spacing:0.02em;
 }
+/* Каталог приватный, но виден — значит зашли с IP из allowlist. Бейдж нужен,
+   чтобы не принять закрытую раздачу за публичную. */
+.private-badge{
+    display:inline-flex;align-items:center;gap:4px;
+    margin-left:8px;
+    background:rgba(251,191,36,0.12);color:#fbbf24;
+    border:1px solid rgba(251,191,36,0.28);
+    padding:1px 8px;border-radius:999px;
+    font-size:10.5px;font-weight:700;letter-spacing:0.04em;
+    text-transform:uppercase;
+    vertical-align:middle;
+}
+.private-badge .ico{width:10px;height:10px}
 .latest-badge{
     display:inline-block;margin-left:8px;
     background:rgba(74,222,128,0.12);color:var(--ok);
@@ -1259,6 +1269,7 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
   <symbol id="ic-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></symbol>
   <symbol id="ic-text" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></symbol>
   <symbol id="ic-code" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></symbol>
+  <symbol id="ic-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
   <symbol id="ic-key" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3"/></symbol>
   <symbol id="ic-doc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></symbol>
   <symbol id="ic-vm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></symbol>
@@ -1989,6 +2000,15 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
                         const mb = document.createElement('span'); mb.className='match-badge'; mb.textContent = matchCount + ' совп.';
                         name.appendChild(mb);
                     }
+                }
+                // Приватный каталог виден только с IP из allowlist — помечаем,
+                // чтобы он не выглядел как обычная публичная папка.
+                if(dir.private){
+                    const pb = document.createElement('span');
+                    pb.className = 'private-badge';
+                    pb.innerHTML = svgIcon('ic-lock') + 'private';
+                    pb.title = 'Каталог скрыт от публики — виден вам по allowlist в .private';
+                    name.appendChild(pb);
                 }
 
                 const sub=document.createElement('div');sub.className='sub';
