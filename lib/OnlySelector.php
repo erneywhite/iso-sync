@@ -52,7 +52,8 @@ final class OnlySelector
                 throw new RuntimeException("--only: пустой ключ в списке. Допустимые ключи: " . implode(', ', $valid));
             }
         }
-        $dupes = array_values(array_diff_key($keys, array_flip($keys)));
+        $counts = array_count_values($keys);
+        $dupes = array_values(array_filter($counts, static fn($c) => $c > 1));
         if ($dupes !== []) {
             throw new RuntimeException("--only: ключи заданы несколько раз: " . implode(', ', $dupes));
         }
