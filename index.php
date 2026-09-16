@@ -574,6 +574,17 @@ h1{
     padding:1px 6px;border-radius:4px;
     font-family:var(--mono);font-size:11px;
 }
+/* Частичный прогон (update_iso.php --only): бейдж + список записей в прогоне */
+.bento-card .card-meta .only-chip{
+    color:var(--warn);font-weight:600;
+    border:1px solid rgba(251,191,36,0.4);
+    background:rgba(251,191,36,0.12);
+    padding:0 6px;border-radius:999px;font-size:11px;line-height:16px;
+}
+.bento-card .card-meta .only-keys{
+    font-family:var(--mono);font-size:11px;opacity:.85;max-width:220px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
 
 /* ========== Sparkline на «Хранилище» ==========
    Мини-график кумулятивного роста объёма по релизным датам файлов (mtime
@@ -1517,6 +1528,15 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
             let stateValue = 'не запускалось';
             let stateClass = 'muted';
             let stateMeta  = '<span>запустите <code>php update_iso.php</code></span>';
+            // Частичный прогон (флаг --only): бейдж со списком записей в этом прогоне.
+            const onlyKeys = (LAST_RUN && Array.isArray(LAST_RUN.only) && LAST_RUN.only.length)
+                ? LAST_RUN.only.map(k => String(k))
+                : [];
+            const onlyChip = onlyKeys.length
+                ? `<span class="sep">•</span>` +
+                  `<span class="only-chip" title="Частичный прогон: ${escapeHtml(onlyKeys.join(', '))}">чastичный</span>` +
+                  `<span class="only-keys" title="${escapeHtml(onlyKeys.join(', '))}">${escapeHtml(onlyKeys.join(', '))}</span>`
+                : '';
             if (LAST_RUN && LAST_RUN.fatal) {
                 stateValue = 'FATAL';
                 stateClass = 'err';
@@ -1537,9 +1557,9 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
                 if (LAST_RUN.updated > 0)    parts.push(`<span class="accent ok">${LAST_RUN.updated}</span><span>обновлено</span>`);
                 if (LAST_RUN.skipped > 0)    parts.push(`<span class="accent">${LAST_RUN.skipped}</span><span>пропущено</span>`);
                 if (LAST_RUN.failed > 0)     parts.push(`<span class="accent err">${LAST_RUN.failed}</span><span>ошибки</span>`);
-                stateMeta = parts.length
+                stateMeta = (parts.length
                     ? parts.join('<span class="sep">•</span>')
-                    : '<span>—</span>';
+                    : '<span>—</span>') + onlyChip;
             }
             const card2 = `
                 <div class="bento-card">

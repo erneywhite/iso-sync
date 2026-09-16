@@ -8,6 +8,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/Logger.php';
 require_once __DIR__ . '/Config.php';
+require_once __DIR__ . '/OnlySelector.php';
 require_once __DIR__ . '/ChecksumParser.php';
 require_once __DIR__ . '/HashCache.php';
 require_once __DIR__ . '/PrivateDirs.php';
