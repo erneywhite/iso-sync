@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 namespace IsoSync;
 
+use RuntimeException;
+
 /**
  * Выборка записей конфига для частичного прогона (флаг --only у update_iso.php).
  *
