@@ -93,3 +93,5 @@ test('дублирующийся ключ: ошибка', function () {
     }
     assertTrue($threw, 'дубли должны падать');
 });
+
+exit(TestRunner::run());
