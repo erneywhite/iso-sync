@@ -39,14 +39,22 @@ final class Updater
     ) {}
 
     /**
+     * @param list<string>|null $onlyKeys ключи записей из config (флаг --only);
+     *                                    null или пустой список = полный прогон
      * @return array<string,mixed> сводка прогона для last_run.json
      */
-    public function run(): array
+    public function run(?array $onlyKeys = null): array
     {
         $startedAt = time();
         $results   = [];
 
-        foreach ($this->config->files as $entry) {
+        $onlyKeys = array_values(array_filter($onlyKeys ?? [], static fn($k) => $k !== ''));
+        $partial  = $onlyKeys !== [];
+
+        foreach ($this->config->files as $key => $entry) {
+            if ($partial && !in_array($key, $onlyKeys, true)) {
+                continue;
+            }
             $this->logger->info("Обрабатываем: {$entry->localName}", [
                 'event' => 'process_start',
                 'file'  => $entry->localName,
@@ -57,6 +65,7 @@ final class Updater
         $summary = [
             'started_at'  => date('c', $startedAt),
             'duration_s'  => time() - $startedAt,
+            'only'        => $partial ? $onlyKeys : null,
             'total'       => count($results),
             'updated'     => count(array_filter($results, fn($r) => $r['status'] === 'updated')),
             'up_to_date'  => count(array_filter($results, fn($r) => $r['status'] === 'up_to_date')),

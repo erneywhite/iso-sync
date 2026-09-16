@@ -4,7 +4,8 @@ declare(strict_types=1);
 /**
  * Точка входа: проверка актуальности и загрузка ISO-образов.
  *
- * Запуск:    php update_iso.php
+ * Запуск:    php update_iso.php [--only=ключ1,ключ2,...]
+ *            --only — только перечисленные записи config/iso-list.json (без флага — все)
  * Конфиг:    config/iso-list.json
  * Кэш:       .hash_cache/
  * Логи:      logs/update.log  +  logs/last_run.json
@@ -23,6 +24,7 @@ use IsoSync\HashCache;
 use IsoSync\Http;
 use IsoSync\Lock;
 use IsoSync\Logger;
+use IsoSync\OnlySelector;
 use IsoSync\Updater;
 
 $baseDir   = __DIR__;
@@ -94,7 +96,19 @@ try {
         logger:         $logger,
     );
 
-    $summary = $updater->run();
+    // --only: частичный прогон. Валидация ДО загрузки чего-либо — на ошибке
+    // (неизвестный ключ, пустое значение) ничего не скачивается и last_run
+    // не затирается; код выхода 2 как у фатальных ошибок.
+    $onlyKeys = OnlySelector::parseArgs(array_slice($argv ?? [], 1));
+    if ($onlyKeys !== []) {
+        $onlyKeys = OnlySelector::validate($onlyKeys, $config);
+        $logger->info('Частичный прогон: ' . implode(', ', $onlyKeys), [
+            'event' => 'only_selected',
+            'only'  => $onlyKeys,
+        ]);
+    }
+
+    $summary = $updater->run($onlyKeys === [] ? null : $onlyKeys);
     $logger->saveLastRun($summary);
 
     // Полный пересчёт кэша + чистка осиротевших — как в исходном поведении
