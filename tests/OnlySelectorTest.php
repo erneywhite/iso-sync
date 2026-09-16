@@ -15,7 +15,7 @@ function makeOnlyConfig(): Config
     return new Config([
         'Debian_12.iso'  => new \IsoSync\IsoEntry('Debian_12.iso', 'Debian', 'https://x/d/', 'debian.iso', false, false, false, '/dvd/i', null, null, null, null, null, false, null, null, 'v4'),
         'ubuntu-lts'     => new \IsoSync\IsoEntry('ubuntu-lts', 'Ubuntu', '', '', false, false, false, '/dvd/i', null, null, null, null, null, false, 'https://x/{folder}/', ['from' => 22, 'to' => 24, 'step' => 2, 'format' => '{0}.04'], 'v4'),
-        'proxmox-ve-8'   => new \IsoSync\IsoEntry('proxmox-ve-8', 'Proxmox', 'https://p/', '', false, false, false, '/dvd/i', null, null, null, null, '/^p_8\\\\.iso$/', 'P_{1}.iso', true, null, null, 'v4'),
+        'proxmox-ve-8'   => new \IsoSync\IsoEntry('proxmox-ve-8', 'Proxmox', 'https://p/', '', false, false, false, '/dvd/i', null, null, null, '/^p_8\\\\.iso$/', 'P_{1}.iso', true, null, null, 'v4'),
         'CentOS_9.iso'   => new \IsoSync\IsoEntry('CentOS_9.iso', 'CentOS', 'https://c/', 'latest', false, false, false, '/dvd/i', null, null, null, null, null, false, null, null, 'v4'),
     ]);
 }
