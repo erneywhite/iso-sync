@@ -225,6 +225,36 @@ test('select: комментарийные _comment_* не в списке до�
 });
 
 // =================================================================
+// Последовательность до блокировки — как её выстроил update_iso.php:
+// Config::loadFromFile -> parseArgs -> select -> new Config, всё ДО flock,
+// чистки *.tmp и записи last_run.json. update_iso.php здесь не запускается —
+// это проверяет smoke-прогон в CI; проверяем, что сама последовательность
+// не бросает при известных ключах, и что неизвестный ключ бросает именно
+// здесь, а не позже (его ловит тот же try в скрипте и он выходит с кодом 2
+// до блокировки).
+// =================================================================
+
+test('последовательность до блокировки: известные ключи — отбор без исключений', function () {
+    $cfg = selectorConfig(['a.iso', 'b.iso', 'c.iso']);
+    $only = OnlySelector::parseArgs(['--only=b.iso', '--only=c.iso']);
+    $files = $cfg->files;
+    if ($only !== null) {
+        $files = new Config(OnlySelector::select($files, $only))->files;
+    }
+    assertEquals(['b.iso', 'c.iso'], array_keys($files));
+});
+
+test('последовательность до блокировки: неизвестный ключ бросает в select, до всякой работы', function () {
+    $cfg = selectorConfig(['a.iso']);
+    $msg = onlyError(function () use ($cfg) {
+        $only = OnlySelector::parseArgs(['--only=unknown.iso']);
+        new Config(OnlySelector::select($cfg->files, $only));
+    });
+    assertTrue($msg !== null, 'неизвестный ключ должен бросать именно на отборе');
+    assertContains('Неизвестные ключи в --only: unknown.iso', $msg);
+});
+
+// =================================================================
 // allowedList — форматирование списка в тексте ошибки
 // =================================================================
 

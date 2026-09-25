@@ -60,15 +60,6 @@ if (in_array('--help', $args, true) || in_array('-h', $args, true)) {
     exit(0);
 }
 
-// Разбираем аргументы ДО блокировки и любой сетевой работы: битый флаг должен
-// останавливать прогон до того, как что-нибудь начнёт качаться.
-try {
-    $only = OnlySelector::parseArgs(array_slice($args, 1));
-} catch (Throwable $e) {
-    fwrite(STDERR, '[ERROR] ' . $e->getMessage() . "\n");
-    exit(2);
-}
-
 $baseDir   = __DIR__;
 $configPath = $baseDir . '/config/iso-list.json';
 $localDir   = $baseDir . '/files';
@@ -77,6 +68,41 @@ $logDir     = $baseDir . '/logs';
 $lockPath   = $baseDir . '/.update.lock';
 
 $logger = new Logger($logDir, channel: 'update');
+
+// Конфиг грузим ДО блокировки: битый конфиг останавливает прогон до того, как
+// кто-то возьмёт лок или начнёт чистить *.tmp.
+try {
+    $config = Config::loadFromFile($configPath);
+} catch (Throwable $e) {
+    $logger->error('Не удалось загрузить конфиг: ' . $e->getMessage(), [
+        'event' => 'fatal',
+        'class' => $e::class,
+        'file'  => $e->getFile(),
+        'line'  => $e->getLine(),
+    ]);
+    $logger->saveLastRun([
+        'started_at' => date('c'),
+        'fatal'      => $e->getMessage(),
+    ]);
+    exit(2);
+}
+
+// Разбираем --only ДО блокировки и любой сетевой работы: битый флаг и
+// неизвестный ключ в нём должны останавливать прогон до того, как что-нибудь
+// начнёт качаться, до блокировки и чистки *.tmp — сообщение в STDERR и код
+// выхода 2, как для неразбранного аргумента.
+$only = null;
+try {
+    $only = OnlySelector::parseArgs(array_slice($args, 1));
+    // Частичный прогон: оставляем только выбранные записи, остальной конфиг не
+    // трогаем. Делается до создания Updater — тот просто не увидит лишнего.
+    if ($only !== null) {
+        $config = new Config(OnlySelector::select($config->files, $only));
+    }
+} catch (Throwable $e) {
+    fwrite(STDERR, '[ERROR] ' . $e->getMessage() . "\n");
+    exit(2);
+}
 
 // Эксклюзивная блокировка
 $lock = new Lock($lockPath);
@@ -99,12 +125,10 @@ try {
         ]);
     }
 
-    $config     = Config::loadFromFile($configPath);
-
-    // Частичный прогон: оставляем только выбранные записи, остальной конфиг не
-    // трогаем. Делается до создания Updater — тот просто не увидит лишнего.
+    // Конфиг и выбор --only загружены до блокировки (выше): битый конфиг и
+    // неизвестный ключ в --only уже вышли с кодом 2 до того, как лок был
+    // взят, и last_run.json не трогали.
     if ($only !== null) {
-        $config = new Config(OnlySelector::select($config->files, $only));
         $logger->info('Частичный прогон по --only: ' . implode(', ', array_keys($config->files)), [
             'event' => 'only_mode',
             'only'  => $only,
