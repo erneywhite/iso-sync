@@ -225,30 +225,32 @@ test('select: комментарийные _comment_* не в списке до�
 });
 
 // =================================================================
-// Последовательность до блокировки — как её выстроил update_iso.php:
-// Config::loadFromFile -> parseArgs -> select -> new Config, всё ДО flock,
-// чистки *.tmp и записи last_run.json. update_iso.php здесь не запускается —
-// это проверяет smoke-прогон в CI; проверяем, что сама последовательность
-// не бросает при известных ключах, и что неизвестный ключ бросает именно
-// здесь, а не позже (его ловит тот же try в скрипте и он выходит с кодом 2
-// до блокировки).
+// Порядок относительно flock, чистки *.tmp и last_run.json здесь НЕ
+// проверяется: update_iso.php тестами не запускается (в CI он не
+// выполняется — только lint, тесты и smoke-прогон diag_uup.php и
+// diag_private.php). Тестируем лишь те звенья последовательности,
+// которую скрипт выстроил до блокировки (parseArgs -> select ->
+// new Config), на их изолированной правильности: неизвестный ключ
+// бросает в select, и скрипт остановится на нём до блокировки; код 2
+// и STDERR — как и для битого флага — тот же catch в update_iso.php.
 // =================================================================
 
-test('последовательность до блокировки: известные ключи — отбор без исключений', function () {
+test('звенья до блокировки: parseArgs -> select -> new Config не бросают при известных ключах', function () {
     $cfg = selectorConfig(['a.iso', 'b.iso', 'c.iso']);
     $only = OnlySelector::parseArgs(['--only=b.iso', '--only=c.iso']);
     $files = $cfg->files;
     if ($only !== null) {
-        $files = new Config(OnlySelector::select($files, $only))->files;
+        // Скобки вокруг new Config: без них это PHP 8.4, на 8.1-8.3 — ошибка разбора.
+        $files = (new Config(OnlySelector::select($files, $only)))->files;
     }
     assertEquals(['b.iso', 'c.iso'], array_keys($files));
 });
 
-test('последовательность до блокировки: неизвестный ключ бросает в select, до всякой работы', function () {
+test('звенья до блокировки: неизвестный ключ бросает в select, а не позже', function () {
     $cfg = selectorConfig(['a.iso']);
     $msg = onlyError(function () use ($cfg) {
         $only = OnlySelector::parseArgs(['--only=unknown.iso']);
-        new Config(OnlySelector::select($cfg->files, $only));
+        (new Config(OnlySelector::select($cfg->files, $only)));
     });
     assertTrue($msg !== null, 'неизвестный ключ должен бросать именно на отборе');
     assertContains('Неизвестные ключи в --only: unknown.iso', $msg);

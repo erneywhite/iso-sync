@@ -97,7 +97,7 @@ try {
     // Частичный прогон: оставляем только выбранные записи, остальной конфиг не
     // трогаем. Делается до создания Updater — тот просто не увидит лишнего.
     if ($only !== null) {
-        $config = new Config(OnlySelector::select($config->files, $only));
+        $config = (new Config(OnlySelector::select($config->files, $only)));
     }
 } catch (Throwable $e) {
     fwrite(STDERR, '[ERROR] ' . $e->getMessage() . "\n");
