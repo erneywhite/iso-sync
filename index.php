@@ -569,6 +569,14 @@ h1{
 .bento-card .card-meta .accent.warn{color:var(--warn)}
 .bento-card .card-meta .accent.err{color:var(--err)}
 .bento-card .card-meta .sep{opacity:.4;color:var(--muted-2)}
+/* Пометка частичного прогона (--only) в карточке «Состояние» */
+.bento-card .card-meta .only-tag{
+    background:var(--accent-soft);
+    border:1px solid rgba(168,85,247,0.28);
+    color:var(--accent);
+    padding:1px 7px;border-radius:999px;
+    font-size:11px;font-weight:600;text-transform:none;letter-spacing:0;
+}
 .bento-card .card-meta code{
     background:rgba(255,255,255,0.05);
     padding:1px 6px;border-radius:4px;
@@ -1532,14 +1540,29 @@ mark{background:rgba(168,85,247,0.25);color:var(--accent-2);padding:0 2px;border
                     stateValue = 'актуально';
                     stateClass = 'ok';
                 }
+                // Поле only ставит update_iso.php при прогоне с --only: счёт ниже
+                // относится только к выбранным записям, и без пометки это читалось
+                // бы как «всё актуально» по всему зеркалу. Имена показываем прямо в
+                // бейдже (первые несколько, остальные счётчиком), полный список — в title.
+                const onlyKeys = Array.isArray(LAST_RUN.only) ? LAST_RUN.only : null;
+                let  onlyMark  = '';
+                if (onlyKeys) {
+                    const shown = onlyKeys.slice(0, 4).map(k => escapeHtml(String(k)));
+                    const label = onlyKeys.length > 4
+                        ? shown.join(', ') + ' +' + (onlyKeys.length - 4)
+                        : shown.join(', ');
+                    onlyMark = `<span class="sep">•</span>`
+                        + `<span class="only-tag" title="${escapeHtml(onlyKeys.join(', '))}">частичный: ${label}</span>`;
+                }
                 const parts = [];
                 if (LAST_RUN.up_to_date > 0) parts.push(`<span class="accent">${LAST_RUN.up_to_date}</span><span>актуально</span>`);
                 if (LAST_RUN.updated > 0)    parts.push(`<span class="accent ok">${LAST_RUN.updated}</span><span>обновлено</span>`);
                 if (LAST_RUN.skipped > 0)    parts.push(`<span class="accent">${LAST_RUN.skipped}</span><span>пропущено</span>`);
                 if (LAST_RUN.failed > 0)     parts.push(`<span class="accent err">${LAST_RUN.failed}</span><span>ошибки</span>`);
-                stateMeta = parts.length
+                const stats = parts.length
                     ? parts.join('<span class="sep">•</span>')
                     : '<span>—</span>';
+                stateMeta = onlyMark + stats;
             }
             const card2 = `
                 <div class="bento-card">

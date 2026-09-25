@@ -20,4 +20,5 @@ require_once __DIR__ . '/DownloaderInterface.php';
 require_once __DIR__ . '/Downloader.php';
 require_once __DIR__ . '/Aria2Downloader.php';
 require_once __DIR__ . '/FamilyResolver.php';
+require_once __DIR__ . '/OnlySelector.php';
 require_once __DIR__ . '/Updater.php';

@@ -5,9 +5,14 @@ declare(strict_types=1);
  * Точка входа: проверка актуальности и загрузка ISO-образов.
  *
  * Запуск:    php update_iso.php
+ *            php update_iso.php --only=Debian_12.iso,ubuntu-lts   # частичный прогон
  * Конфиг:    config/iso-list.json
  * Кэш:       .hash_cache/
  * Логи:      logs/update.log  +  logs/last_run.json
+ *
+ * Без --only прогоняется весь список. С --only обрабатываются только выбранные
+ * записи (любого режима), а в сводке last_run.json появляется поле only. Блокировка,
+ * чистка осиротевших *.tmp и пересчёт хэшей в конце — без изменений.
  *
  * Скрипт защищён flock — одновременный второй запуск тихо завершится с кодом 0.
  */
@@ -23,7 +28,46 @@ use IsoSync\HashCache;
 use IsoSync\Http;
 use IsoSync\Lock;
 use IsoSync\Logger;
+use IsoSync\OnlySelector;
 use IsoSync\Updater;
+
+/**
+ * Краткая справка по аргументам. Выводим в STDOUT и выходим с кодом 0.
+ *
+ * Без mb_* и heredoc с отступами: на проде CLI-PHP собран без mbstring, а
+ * отступающий heredoc легко ломает парсер — строки проще собрать массивом.
+ */
+function printUsage(): void
+{
+    $lines = [
+        'update_iso.php — проверка актуальности и загрузка ISO-образов',
+        '',
+        '  php update_iso.php                       весь список из config/iso-list.json',
+        '  php update_iso.php --only=Debian_12.iso  одна запись',
+        '  php update_iso.php --only=A,B            несколько записей',
+        '  php update_iso.php --help                этот текст',
+        '',
+        'Коды возврата: 0 — всё актуально или успешно обновлено, 1 — были ошибки,',
+        '2 — фатальная ошибка (битый конфиг, нет доступа к каталогам) либо',
+        'неразобранный аргумент; текст ошибки в STDERR.',
+    ];
+    fwrite(STDOUT, implode("\n", $lines) . "\n");
+}
+
+$args = $argv ?? [];
+if (in_array('--help', $args, true) || in_array('-h', $args, true)) {
+    printUsage();
+    exit(0);
+}
+
+// Разбираем аргументы ДО блокировки и любой сетевой работы: битый флаг должен
+// останавливать прогон до того, как что-нибудь начнёт качаться.
+try {
+    $only = OnlySelector::parseArgs(array_slice($args, 1));
+} catch (Throwable $e) {
+    fwrite(STDERR, '[ERROR] ' . $e->getMessage() . "\n");
+    exit(2);
+}
 
 $baseDir   = __DIR__;
 $configPath = $baseDir . '/config/iso-list.json';
@@ -56,6 +100,17 @@ try {
     }
 
     $config     = Config::loadFromFile($configPath);
+
+    // Частичный прогон: оставляем только выбранные записи, остальной конфиг не
+    // трогаем. Делается до создания Updater — тот просто не увидит лишнего.
+    if ($only !== null) {
+        $config = new Config(OnlySelector::select($config->files, $only));
+        $logger->info('Частичный прогон по --only: ' . implode(', ', array_keys($config->files)), [
+            'event' => 'only_mode',
+            'only'  => $only,
+        ]);
+    }
+
     $hashCache  = new HashCache($cacheDir);
     $http       = new Http();
     $gpg        = new GpgVerifier($http, $logger);
@@ -95,6 +150,10 @@ try {
     );
 
     $summary = $updater->run();
+    if ($only !== null) {
+        // Поле only отличает частичный прогон от полного — его читает веб-интерфейс.
+        $summary = array_merge(['only' => array_values($only)], $summary);
+    }
     $logger->saveLastRun($summary);
 
     // Полный пересчёт кэша + чистка осиротевших — как в исходном поведении
