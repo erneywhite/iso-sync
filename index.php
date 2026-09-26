@@ -202,6 +202,9 @@ if (is_dir($filesDir)) {
                 'size'  => $size,
                 'mtime' => filemtime($path),
                 'type'  => $hashCache->get($path) ?? 'sha256:not_computed_yet',
+                // Файл верхнего уровня — никогда не может быть в приватном каталоге,
+                // поле для единообразия с разделами (app.js смотрит оба).
+                'private' => false,
             ];
             $totalFiles++;
             $totalSize += $size;
@@ -259,10 +262,23 @@ $uiPlural = static function (int $n, string $one, string $few, string $many): st
 };
 
 $uiSectionCount = count(array_filter($items, static fn ($it) => ($it['type'] ?? '') === 'dir'));
+$uiSectionCountWord = (string)$uiPlural($uiSectionCount, 'раздел', 'раздела', 'разделов');
 
 $uiLastCheckIso = '';
 if (is_array($lastRun)) {
     $uiLastCheckIso = (string)($lastRun['finished_at'] ?? $lastRun['started_at'] ?? '');
+}
+
+// В JS уходит только сводка: results содержит служебные сообщения с локальными
+// путями сервера — их на страницу не тащим (как и server-path из истории).
+$uiLastRun = null;
+if (is_array($lastRun)) {
+    $uiLastRun = [];
+    foreach (['started_at', 'finished_at', 'duration_s', 'total', 'updated', 'up_to_date', 'skipped', 'failed', 'only', 'fatal'] as $k) {
+        if (array_key_exists($k, $lastRun)) {
+            $uiLastRun[$k] = $lastRun[$k];
+        }
+    }
 }
 ?>
 <!doctype html>
@@ -274,18 +290,19 @@ if (is_array($lastRun)) {
 <meta name="description" content="Личное зеркало дистрибутивов Erney White.">
 <title>Хранилище iso-файлов</title>
 <link rel="icon" href="favicon.ico" type="image/x-icon">
-<link rel="stylesheet" href="assets/styles.css?v=workbench-20260926">
+<link rel="stylesheet" href="assets/styles.css?v=workbench-20260926-2">
 <script defer src="assets/vendor/lucide.js?v=workbench-20260926"></script>
 </head>
 <body>
 <div id="iso-designs" data-mode="workbench" aria-label="ISO-архив">
   <div class="product">
     <header class="masthead"><a class="brand" href="https://iso.erney.monster/" target="_blank" rel="noopener"><span class="brand-icon">ew<span>↗</span></span><span>Erney<span class="brand-second"> / iso archive</span></span></a><div class="mast-right"><span>Личное зеркало дистрибутивов</span><button class="cursor-interaction quiet" id="history-open"><i data-lucide="history" aria-hidden="true"></i> Обновления</button></div></header>
-    <div class="workarea"><aside class="navigation"><div class="navcaption">БИБЛИОТЕКА</div><nav id="folders" aria-label="Разделы архива"></nav><div class="sidebar-bottom"><span class="smallcaps">ПУБЛИЧНЫЙ АРХИВ</span><strong><?php echo (int)$totalFiles; ?> <small><?php echo $uiPlural($totalFiles, 'файл', 'файла', 'файлов'); ?></small></strong><span><span id="total-size"></span> · <?php echo (int)$uiSectionCount; ?> разделов</span><div class="storage-line"></div><span>Проверка: <span id="last-check" title="<?php echo htmlspecialchars($uiLastCheckIso, ENT_QUOTES); ?>">—</span></span></div></aside>
+    <div class="workarea"><aside class="navigation"><div class="navcaption">БИБЛИОТЕКА</div><nav id="folders" aria-label="Разделы архива"></nav><div class="sidebar-bottom"><span class="smallcaps">ПУБЛИЧНЫЙ АРХИВ</span><strong><?php echo (int)$totalFiles; ?> <small><?php echo $uiPlural($totalFiles, 'файл', 'файла', 'файлов'); ?></small></strong><span><span id="total-size"></span> · <?php echo (int)$uiSectionCount; ?> <?php echo $uiSectionCountWord; ?></span><div class="storage-line"></div><div id="check" aria-label="Сводка последней проверки"></div></div></aside>
     <main class="workspace"><div class="heading-line"><div><div class="eyebrow">ISO.ERNEY.MONSTER <span>/ БИБЛИОТЕКА</span></div><h1 id="section-title">Ubuntu<span class="title-dot">.</span></h1><p id="section-description">Образы Ubuntu в вашем архиве</p></div><div class="heading-meta"><b id="group-count">5</b><span>файлов в разделе</span></div></div>
       <div class="searchrow"><label class="searchbox"><i data-lucide="search" aria-hidden="true"></i><input id="iso-query" aria-label="Поиск по имени или SHA-256" placeholder="Найти образ или SHA-256…" autocomplete="off"><kbd>Ctrl K</kbd><button class="cursor-interaction clear" id="clear-query" aria-label="Очистить поиск" hidden>×</button></label><select id="sort" aria-label="Сортировка"><option value="version">По версии</option><option value="date">По дате файла</option><option value="size">По размеру</option></select></div>
       <div id="feature"></div><div class="results-head"><span id="results-count" aria-live="polite">5 файлов</span><span class="hashhint">SHA-256 доступен для каждого файла</span></div>
       <div class="files-and-detail"><section id="file-list" aria-label="Файлы"></section><aside id="inspector" aria-label="Сведения о выбранном файле"></aside></div>
+      <div id="missing" aria-label="Отсутствующие файлы"></div>
       <div id="empty" hidden><i data-lucide="search-x" aria-hidden="true"></i><h2>Ничего не найдено</h2><p>Попробуйте название системы, часть имени или SHA-256.</p><button class="cursor-interaction quiet" id="reset-search">Сбросить поиск</button></div>
       <footer class="archive-footer"><span>Erney White <span class="sep">/</span> ISO archive</span><span>Личное зеркало дистрибутивов</span></footer>
     </main></div>
@@ -297,14 +314,28 @@ if (is_array($lastRun)) {
     // Передача серверных данных в интерфейс: структура — assets/demo-data.js /
     // MIGRATION.md §3. Приватные каталоги и файлы уже отфильтрованы вышестоящим
     // PHP-кодом; JSON кодируется с HEX-флагами, чтобы экранировать <, &, ' и " .
+    // Состояния шага 2 (MIGRATION.md §8): meta.last_run — сводка последнего
+    // прогона (включая "only"/"fatal"), missing — ожидаемые по конфигу файлы,
+    // которых нет на диске (приватные записи сервер уже исключил).
+    // Формы множественного числа для JS-подписей считает assets/app.js
+    // (тот же алгоритм, что $uiPlural выше — Closure в JSON не сериализуется).
     window.ISO_ARCHIVE_DATA = <?php
     echo json_encode(
-        ['catalog' => $items, 'history' => $history, 'meta' => ['total_size' => $totalSize, 'last_check' => $uiLastCheckIso]],
+        [
+            'catalog' => $items,
+            'history' => $history,
+            'missing' => $missing,
+            'meta'    => [
+                'total_size'   => $totalSize,
+                'last_check'   => $uiLastCheckIso,
+                'last_run'     => $uiLastRun,
+            ],
+        ],
         JSON_UNESCAPED_UNICODE
         | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
     );
     ?>;
     </script>
-    <script defer src="assets/app.js?v=workbench-20260926"></script>
+    <script defer src="assets/app.js?v=workbench-20260926-2"></script>
 </body>
 </html>

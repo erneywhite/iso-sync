@@ -356,3 +356,46 @@ html,body { margin:0; background:#111216; }
 
 }
 
+/* Шаг 2 редизайна (MIGRATION.md §8): сводка проверки, отсутствующие файлы,
+   бейджи приватных разделов и пустые состояния — поверх базовых классов. */
+
+#iso-designs .check-line{font-size:13px;color:var(--ink)}
+
+#iso-designs .check-sub{font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+
+#iso-designs .check-line.bad,#iso-designs .check-sub.bad{color:#f87171}
+
+#iso-designs .check-sub.warn{color:#fbbf24}
+
+#iso-designs .check-sub .ok{color:#4ade80}
+
+#iso-designs .check-sub .bad{color:#f87171}
+
+#iso-designs .priv-badge{display:inline-flex;align-items:center;gap:4px;font-size:9.5px;letter-spacing:.08em;color:var(--accent);border:1px solid var(--line);border-radius:5px;padding:2px 6px;white-space:nowrap;vertical-align:middle}
+
+#iso-designs .priv-badge svg{width:10px;height:10px}
+
+#iso-designs .folder .priv-badge{margin-left:6px}
+
+#iso-designs .priv-badge-sm{font-size:9px;padding:1px 4px}
+
+#iso-designs .panel{background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:16px 18px}
+
+#iso-designs .panel-top{display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.08em;color:var(--muted);margin-bottom:8px}
+
+#iso-designs .panel-top svg{width:15px;height:15px}
+
+#iso-designs .missing-row{display:flex;justify-content:space-between;align-items:baseline;gap:14px;padding:9px 0;border-top:1px solid var(--line);font-size:13px}
+
+#iso-designs .missing-row strong{display:block;font-weight:500;overflow-wrap:anywhere}
+
+#iso-designs .missing-row small{display:block;color:var(--muted);font-size:11px;font-family:Consolas,monospace}
+
+#iso-designs .missing-row .remote{font-family:Consolas,monospace;text-align:right;overflow-wrap:anywhere;max-width:55%}
+
+#iso-designs .hash-note{display:flex;align-items:center;gap:8px;margin-top:6px;padding:10px 12px;background:var(--bg);border:1px dashed var(--line);border-radius:5px;color:var(--muted);font-size:12px}
+
+#iso-designs .hash-note svg{width:14px;height:14px;flex-shrink:0}
+
+#iso-designs #missing:empty{display:none}
+
