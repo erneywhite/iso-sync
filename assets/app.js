@@ -10,6 +10,9 @@ const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'
 // Русские формы множественного числа (тот же алгоритм, что $uiPlural в index.php).
 const plural=(n,o,f,m)=>{n=((n%100)+100)%100;if(n>=11&&n<=14)return m;return{1:o,2:f,3:f,4:f}[n%10]||m};
 const symbols={all:'≡',AlmaLinux:'Al',ArchLinux:'Ar',CentOS:'Ce',Debian:'De',Proxmox:'Px',Ubuntu:'Ub',Windows:'Wi'};
+// Раздел, которого дизайн не знает (например «Windows OS»): метка из первых
+// двух букв названия, как у известных («Wi», «Ub»); короче двух букв — как есть.
+const mark=name=>symbols[name]||String(name).slice(0,2);
 const notes={all:'Дистрибутивы, драйверы и утилиты',AlmaLinux:'Образы AlmaLinux в вашем архиве',ArchLinux:'Установочный образ Arch Linux',CentOS:'Версии CentOS в вашем архиве',Debian:'Установочные образы Debian',Proxmox:'VE, Backup Server и Mail Gateway',Ubuntu:'Образы Ubuntu в вашем архиве',Windows:'WinPE, драйверы и утилиты'};
 const family=n=>n.startsWith('ProxmoxVE_')?'Proxmox VE':n.startsWith('Proxmox_BackUP_')?'Proxmox Backup':n.startsWith('Proxmox_MailGateway_')?'Proxmox Mail Gateway':n.split('_')[0];
 const compare=(a,b)=>b.name.localeCompare(a.name,'en',{numeric:true});
@@ -34,9 +37,9 @@ try{$('last-check').textContent=fmtIso(meta.last_check)}catch(_){}
 // проверка ("only" — явно подписываем, чтобы не выглядела полным сканом),
 // обычный прогон (длительность + обновлено/актуально/пропущено/ошибки),
 // прогон без сводки (только время), ещё не запускалось (нет last_run.json).
-function renderCheck(){const el=$('check');if(!el)return;const lr=meta.last_run;if(!lr){el.innerHTML='<span class="smallcaps">СТАТУС ПРОВЕРКИ</span><span class="check-line">Проверка ещё не запускалась</span><span class="check-sub">Запустите php update_iso.php — сводка появится здесь.</span>';return}
+function renderCheck(){const el=$('check');if(!el)return;const lr=meta.last_run;let html='';if(!lr){html='<span class="smallcaps">СТАТУС ПРОВЕРКИ</span><span class="check-line">Проверка ещё не запускалась</span><span class="check-sub">Запустите php update_iso.php — сводка появится здесь.</span>'}else{
 const at=lr.finished_at||lr.started_at;
-let html='<span class="smallcaps">СТАТУС ПРОВЕРКИ</span>';
+html='<span class="smallcaps">СТАТУС ПРОВЕРКИ</span>';
 if(lr.fatal){html+=`<span class="check-line bad">Ошибочное завершение</span><span class="check-sub bad">${esc(lr.fatal)}</span>${at?`<span class="check-sub">${esc(fmtIso(at))}</span>`:''}`}
 else{const failed=(typeof lr.failed==='number')?lr.failed:0;
 if(failed>0)html+=`<span class="check-line bad">Ошибки: ${failed} ${plural(failed,'файл','файла','файлов')}</span>`;
@@ -45,10 +48,10 @@ if(Array.isArray(lr.only)&&lr.only.length){const names=lr.only.map(String).map(e
 if(typeof lr.updated==='number'||typeof lr.up_to_date==='number'||typeof lr.skipped==='number'||typeof lr.failed==='number'){
 const parts=[];
 if(lr.updated>0)parts.push(`<span class="ok">${lr.updated} ${plural(lr.updated,'обновлено','обновлено','обновлено')}</span>`);
-if(lr.up_to_date>0)parts.push(`${lr.up_to_date} ${plural(lr.up_to_date,'актуально','актуально','актуально')}</span>`);
-if(lr.skipped>0)parts.push(`${lr.skipped} ${plural(lr.skipped,'пропущено','пропущено','пропущено')}</span>`);
+if(lr.up_to_date>0)parts.push(`${lr.up_to_date} ${plural(lr.up_to_date,'актуально','актуально','актуально')}`);
+if(lr.skipped>0)parts.push(`${lr.skipped} ${plural(lr.skipped,'пропущено','пропущено','пропущено')}`);
 if(lr.failed>0)parts.push(`<span class="bad">${lr.failed} ${plural(lr.failed,'ошибка','ошибки','ошибок')}</span>`);
-if(parts.length)html+=`<span class="check-sub">${parts.join(' · ')}</span>`;}}
+if(parts.length)html+=`<span class="check-sub">${parts.join(' · ')}</span>`;}}}
 el.innerHTML=html}
 renderCheck();
 // ===== Отсутствующие файлы (missing): ожидаются по конфигу, а на диске нет =====
@@ -58,10 +61,10 @@ renderMissing();
 function persist(){} // В демонстрации состояние хранится только до перезагрузки.
 function icons(){if(globalThis.lucide)lucide.createIcons({attrs:{width:18,height:18}})}
 function visibleFiles(){return files.filter(f=>(state.query?true:(state.group==='all'||f.group===state.group))&&(!state.query||(f.name+' '+f.group+' '+f.type).toLowerCase().includes(state.query.toLowerCase()))).sort(state.sort==='date'?(a,b)=>b.mtime-a.mtime:state.sort==='size'?(a,b)=>b.size-a.size:compare)}
-function render(){root.dataset.mode=state.mode;root.style.setProperty('--radius',state.mode==='console'?'2px':state.radius+'px');root.querySelectorAll('.comparebar button').forEach(b=>{b.classList.toggle('active',b.dataset.mode===state.mode);b.setAttribute('aria-pressed',b.dataset.mode===state.mode?'true':'false')});$('folders').innerHTML=[{name:'all',label:'Все файлы',count:files.length,priv:false},...catalog.map(g=>({name:g.name,label:g.name,count:(g.children||[]).length,priv:!!g.private}))].map(g=>`<button class="folder cursor-interaction ${state.group===g.name&&!state.query?'active':''}" data-folder="${esc(g.name)}" aria-pressed="${state.group===g.name&&!state.query}"><span class="folder-mark">${symbols[g.name]||'⌘'}</span>${g.label}${g.priv?'<span class="priv-badge priv-badge-sm"><i data-lucide="lock" aria-hidden="true"></i>PRIVATE</span>':''}<span class="folder-count">${g.count}</span></button>`).join('');
+function render(){root.dataset.mode=state.mode;root.style.setProperty('--radius',state.mode==='console'?'2px':state.radius+'px');root.querySelectorAll('.comparebar button').forEach(b=>{b.classList.toggle('active',b.dataset.mode===state.mode);b.setAttribute('aria-pressed',b.dataset.mode===state.mode?'true':'false')});$('folders').innerHTML=[{name:'all',label:'Все файлы',count:files.length,priv:false},...catalog.map(g=>({name:g.name,label:g.name,count:(g.children||[]).length,priv:!!g.private}))].map(g=>`<button class="folder cursor-interaction ${state.group===g.name&&!state.query?'active':''}" data-folder="${esc(g.name)}" aria-pressed="${state.group===g.name&&!state.query}"><span class="folder-mark">${mark(g.name)}</span>${g.label}${g.priv?'<span class="priv-badge priv-badge-sm"><i data-lucide="lock" aria-hidden="true"></i>PRIVATE</span>':''}<span class="folder-count">${g.count}</span></button>`).join('');
 const list=visibleFiles();$('section-title').innerHTML=(state.query?'Поиск':state.group==='all'?'Все образы':esc(state.group))+'<span class="title-dot">.</span>';$('section-description').textContent=state.query?'Результаты по всему публичному архиву':state.group==='all'?'Дистрибутивы, драйверы и утилиты':(notes[state.group]||state.group);$('group-count').textContent=list.length;$('results-count').textContent=state.query?`Найдено: ${list.length} ${plural(list.length,'файл','файла','файлов')}`:`Файлов: ${list.length}`;$('clear-query').hidden=!state.query;$('empty').hidden=list.length>0||!state.query;if(!list.length&&state.query)$('empty').innerHTML='<i data-lucide="search-x" aria-hidden="true"></i><h2>Ничего не найдено</h2><p>Попробуйте название системы, часть имени или SHA-256.</p><button class="cursor-interaction quiet" id="reset-search">Сбросить поиск</button>';
 const featured=!state.query&&state.group!=='all'?list.find(f=>newest.has(f.id)):null;
-$('feature').innerHTML=featured?`<div class="featured"><div class="featured-symbol">${symbols[featured.group]||'⌘'}</div><div class="featured-info"><div class="featured-label">НОВЕЙШАЯ ВЕРСИЯ В АРХИВЕ</div><h2>${esc(clean(featured))}</h2><p>${size(featured.size)} <span class="sep">/</span> ${date(featured.mtime)} <span class="sep">/</span> SHA-256</p></div><a class="primary cursor-interaction" href="${url(featured)}" target="_blank" rel="noopener"><i data-lucide="download" aria-hidden="true"></i> Скачать ISO</a></div>`:'';
+$('feature').innerHTML=featured?`<div class="featured"><div class="featured-symbol">${mark(featured.group)}</div><div class="featured-info"><div class="featured-label">НОВЕЙШАЯ ВЕРСИЯ В АРХИВЕ</div><h2>${esc(clean(featured))}</h2><p>${size(featured.size)} <span class="sep">/</span> ${date(featured.mtime)} <span class="sep">/</span> SHA-256</p></div><a class="primary cursor-interaction" href="${url(featured)}" target="_blank" rel="noopener"><i data-lucide="download" aria-hidden="true"></i> Скачать ISO</a></div>`:'';
 if(['console','workbench'].includes(state.mode)&&!list.some(f=>f.id===state.selected))state.selected=list[0]?.id||'';
 $('file-list').innerHTML=list.length?'<div class="list-header"><span>Имя файла</span><span>Размер</span><span>Дата файла</span><span></span></div>'+list.map(f=>`<article class="file-row ${state.selected===f.id?'selected':''}"><button class="file-name cursor-interaction" data-file="${esc(f.id)}" aria-label="Сведения: ${esc(f.name)}"><strong>${esc(f.name)}${newest.has(f.id)?'<span class="latest">LATEST</span>':''}</strong><small>${state.query||state.group==='all'?esc(f.group)+' / ':''}${state.mode==='workbench'?date(f.mtime)+(hashOk(f)?' · SHA-256':' · хэш не готов'):(hashOk(f)?esc(f.type.slice(0,19))+'…':'хэш не готов')}</small></button><span class="file-size">${size(f.size)}</span><span class="file-date">${date(f.mtime)}</span><a class="row-download cursor-interaction" aria-label="Скачать ${esc(f.name)}" href="${url(f)}" target="_blank" rel="noopener"><i data-lucide="download" aria-hidden="true"></i> Скачать</a></article>`).join(''):'';if(!list.length&&!state.query)emptyList($('file-list'));
 renderInspector();icons();}

@@ -18,8 +18,7 @@ html,body { margin:0; background:#111216; }
 #iso-designs .product{background:var(--bg);overflow:hidden;border:1px solid var(--line);border-top:0}
 #iso-designs .masthead{padding:22px 28px;display:flex;gap:20px;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}
 #iso-designs .brand{display:flex;align-items:center;gap:12px;font-weight:650;font-size:20px;white-space:nowrap}
-#iso-designs .brand-icon{display:flex;align-items:center;gap:2px;background:var(--accent);color:var(--accent-ink);border-radius:9px;padding:5px 9px;font-size:19px;font-weight:750;letter-spacing:-2px}
-#iso-designs .brand-icon>span{font-size:15px;align-self:flex-start;margin-left:2px}
+#iso-designs .brand-icon{width:30px;height:30px;border-radius:7px;flex-shrink:0}
 #iso-designs .brand-second{font-size:14px;color:var(--muted);font-weight:400}
 #iso-designs .mast-right{display:flex;align-items:center;gap:20px;font-size:13px;color:var(--muted)}
 #iso-designs .quiet{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:transparent;border:1px solid var(--line);padding:8px 13px;border-radius:8px;color:var(--muted);font-size:14px}
@@ -398,4 +397,21 @@ html,body { margin:0; background:#111216; }
 #iso-designs .hash-note svg{width:14px;height:14px;flex-shrink:0}
 
 #iso-designs #missing:empty{display:none}
+
+/* Ревью шага 2: блок «Статус проверки» — каждая строка на своём месте,
+   с обычным межстрочным отступом (раньше текстовые span сливались в строку). */
+#iso-designs #check{display:flex;flex-direction:column;gap:6px}
+
+/* Ревью шага 2: страница заполняет высоту окна целиком — боковая панель и
+   рабочая область тянутся до низа, футер упирается в нижний край. */
+html,body{height:100%}
+#iso-designs{display:flex;flex-direction:column;min-height:100%}
+#iso-designs .product{display:flex;flex-direction:column;flex:1 0 auto}
+#iso-designs .workarea{flex:1 0 auto}
+#iso-designs .workspace{display:flex;flex-direction:column;min-height:0}
+/* Селектор с [data-mode], чтобы перебить margin-top:25px режима workbench;
+   минимальный отступ над футером даёт последний видимый блок перед ним
+   (список файлов или панель отсутствующих файлов). */
+#iso-designs[data-mode] .workspace>.archive-footer{margin-top:auto}
+#iso-designs .workspace>.files-and-detail,#iso-designs .workspace>#missing:not(:empty){margin-bottom:25px}
 
