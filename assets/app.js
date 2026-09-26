@@ -11,7 +11,7 @@ const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'
 const plural=(n,o,f,m)=>{n=((n%100)+100)%100;if(n>=11&&n<=14)return m;return{1:o,2:f,3:f,4:f}[n%10]||m};
 // Логотипы ОС для меню разделов и карточки новейшей версии: пути SVG (viewBox 0 0 24 24)
 // из Simple Icons 16.32.0 (CC0); Windows — четыре квадрата, в Simple Icons его больше нет.
-// Цвет — currentColor, как у текста пункта. Раздел ищется по имени, затем по первому слову
+// Цвета — фирменные (brand); у тёмных на тёмном фоне взят яркий цвет из их же логотипа. Раздел ищется по имени, затем по первому слову
 // («Windows OS» → Windows); неизвестный — значок папки, «Все файлы» — стопка.
 const logos={
   Ubuntu:'M17.61.455a3.41 3.41 0 0 0-3.41 3.41 3.41 3.41 0 0 0 3.41 3.41 3.41 3.41 0 0 0 3.41-3.41 3.41 3.41 0 0 0-3.41-3.41zM12.92.8C8.923.777 5.137 2.941 3.148 6.451a4.5 4.5 0 0 1 .26-.007 4.92 4.92 0 0 1 2.585.737A8.316 8.316 0 0 1 12.688 3.6 4.944 4.944 0 0 1 13.723.834 11.008 11.008 0 0 0 12.92.8zm9.226 4.994a4.915 4.915 0 0 1-1.918 2.246 8.36 8.36 0 0 1-.273 8.303 4.89 4.89 0 0 1 1.632 2.54 11.156 11.156 0 0 0 .559-13.089zM3.41 7.932A3.41 3.41 0 0 0 0 11.342a3.41 3.41 0 0 0 3.41 3.409 3.41 3.41 0 0 0 3.41-3.41 3.41 3.41 0 0 0-3.41-3.41zm2.027 7.866a4.908 4.908 0 0 1-2.915.358 11.1 11.1 0 0 0 7.991 6.698 11.234 11.234 0 0 0 2.422.249 4.879 4.879 0 0 1-.999-2.85 8.484 8.484 0 0 1-.836-.136 8.304 8.304 0 0 1-5.663-4.32zm11.405.928a3.41 3.41 0 0 0-3.41 3.41 3.41 3.41 0 0 0 3.41 3.41 3.41 3.41 0 0 0 3.41-3.41 3.41 3.41 0 0 0-3.41-3.41z',
@@ -22,8 +22,10 @@ const logos={
   Proxmox:'M4.928 1.825c-1.09.553-1.09.64-.07 1.78 5.655 6.295 7.004 7.782 7.107 7.782.139.017 7.971-8.542 8.058-8.801.034-.07-.208-.312-.519-.536-.415-.312-.864-.433-1.712-.467-1.59-.104-2.144.242-4.115 2.455-.899 1.003-1.66 1.833-1.66 1.833-.017 0-.76-.813-1.642-1.798S8.473 2.1 8.127 1.91c-.796-.45-2.421-.484-3.2-.086zM1.297 4.367C.45 4.695 0 5.007 0 5.248c0 .121 1.331 1.678 2.94 3.459 1.625 1.78 2.939 3.268 2.939 3.302 0 .035-1.331 1.522-2.94 3.303C1.314 17.11.017 18.683.035 18.822c.086.467 1.504 1.055 2.541 1.055 1.678-.018 2.058-.312 5.603-4.202 1.78-1.954 3.233-3.614 3.233-3.666 0-.069-1.435-1.694-3.199-3.63-2.3-2.508-3.423-3.632-3.96-3.874-.812-.398-2.126-.467-2.956-.138zm18.467.12c-.502.26-1.764 1.505-3.943 3.891-1.763 1.937-3.199 3.562-3.199 3.631 0 .07 1.453 1.712 3.234 3.666 3.544 3.89 3.925 4.184 5.602 4.202 1.038 0 2.455-.588 2.542-1.055.017-.156-1.28-1.712-2.905-3.493-1.608-1.78-2.94-3.285-2.94-3.32 0-.034 1.332-1.539 2.94-3.32C22.72 6.91 24.017 5.352 24 5.214c-.087-.45-1.366-.968-2.473-1.038-.795-.034-1.21.035-1.763.312zM7.954 16.973c-2.144 2.369-3.908 4.374-3.943 4.46-.034.07.208.312.52.537.414.311.864.432 1.711.467 1.574.103 2.161-.26 4.15-2.508.864-.968 1.608-1.78 1.625-1.78s.761.812 1.643 1.798c2.023 2.248 2.559 2.576 4.132 2.49.848-.035 1.297-.156 1.712-.467.311-.225.553-.467.519-.536-.087-.26-7.92-8.819-8.058-8.801-.069 0-1.867 1.954-4.011 4.34z',
   Windows:'M0 0h11.377v11.372H0zm12.623 0H24v11.372H12.623zM0 12.623h11.377V24H0zm12.623 0H24V24H12.623z'
 };
-const logoOf=name=>logos[name]||logos[String(name).split(/[\s_-]/)[0]];
-const mark=name=>{if(name==='all')return'<i data-lucide="layers" aria-hidden="true"></i>';const d=logoOf(name);return d?`<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="${d}"/></svg>`:'<i data-lucide="folder" aria-hidden="true"></i>'};
+const brand={Ubuntu:'#E95420',Debian:'#D70751',AlmaLinux:'#24C2FF',ArchLinux:'#1793D1',CentOS:'#9CCD2A',Proxmox:'#E57000',Windows:'#00A4EF'};
+const logoKey=name=>logos[name]?name:String(name).split(/[\s_-]/)[0];
+const logoOf=name=>logos[logoKey(name)];
+const mark=name=>{if(name==='all')return'<i data-lucide="layers" aria-hidden="true"></i>';const d=logoOf(name);return d?`<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="${brand[logoKey(name)]||'currentColor'}" d="${d}"/></svg>`:'<i data-lucide="folder" aria-hidden="true"></i>'};
 const notes={all:'Дистрибутивы, драйверы и утилиты',AlmaLinux:'Образы AlmaLinux в вашем архиве',ArchLinux:'Установочный образ Arch Linux',CentOS:'Версии CentOS в вашем архиве',Debian:'Установочные образы Debian',Proxmox:'VE, Backup Server и Mail Gateway',Ubuntu:'Образы Ubuntu в вашем архиве',Windows:'WinPE, драйверы и утилиты'};
 const family=n=>n.startsWith('ProxmoxVE_')?'Proxmox VE':n.startsWith('Proxmox_BackUP_')?'Proxmox Backup':n.startsWith('Proxmox_MailGateway_')?'Proxmox Mail Gateway':n.split('_')[0];
 const compare=(a,b)=>b.name.localeCompare(a.name,'en',{numeric:true});
@@ -36,8 +38,8 @@ const date=n=>new Date(n*1000).toLocaleDateString('ru-RU',{timeZone:'Europe/Riga
 const fmtDur=s=>{s=Math.max(0,Math.round(s||0));const m=Math.floor(s/60),ss=s%60;return m?(m+' мин '+(ss?ss+' сек':'')):(ss+' сек')};
 const url=f=>window.location.origin+'/files/'+(f.group?encodeURIComponent(f.group)+'/':'')+encodeURIComponent(f.name);
 const clean=f=>f.name.replace(/\.iso$/i,'').replace(/_/g,' ');
-const saved={}; // При открытии показываем утверждённый Workbench / Ubuntu.
-let state={mode:'workbench',group:catalog.some(g=>g.name===saved.group)||saved.group==='all'?saved.group:catalog.some(g=>g.name==='Ubuntu')?'Ubuntu':(catalog[0]||{name:'all'}).name,query:'',sort:'version',selected:'',radius:14};
+const saved={}; // При открытии показываем «Все файлы» (решение Erney 2026-09-27; в макете было Ubuntu).
+let state={mode:'workbench',group:catalog.some(g=>g.name===saved.group)?saved.group:'all',query:'',sort:'version',selected:'',radius:14};
 const initial=files.filter(f=>state.group==='all'||f.group===state.group).sort(compare)[0];state.selected=initial?initial.id:'';
 // Общий размер и дата последней проверки: строки ISO из index.php форматируем
 // в браузере (PHP живёт в UTC-зоне сервера, даты на странице — локальные).
