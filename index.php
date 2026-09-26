@@ -336,6 +336,6 @@ if (is_array($lastRun)) {
     );
     ?>;
     </script>
-    <script defer src="assets/app.js?v=workbench-20260927-6"></script>
+    <script defer src="assets/app.js?v=workbench-20260927-7"></script>
 </body>
 </html>
