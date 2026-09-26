@@ -429,3 +429,22 @@ html,body{height:100%}
 #iso-designs .history-row .history-kind.kind-updated{color:#4ade80}
 #iso-designs .history-row .history-kind.kind-failed{color:#f87171}
 #iso-designs .history-row .history-kind.kind-cleanup{color:var(--muted)}
+/* Страница без прокрутки (решение Erney 2026-09-27): высота = окно, прокручиваются только
+   список файлов, панель сведений и меню разделов; подвал всегда виден внизу.
+   Список не растягивается (flex:0 1 auto) — при коротком списке подвал прижат margin-top:auto,
+   при длинном список сжимается до свободного места и прокручивается сам. */
+html,body{overflow:hidden}
+#iso-designs{height:100vh;min-height:0}
+#iso-designs .product{flex:1 1 auto;min-height:0}
+#iso-designs .workarea{flex:1 1 auto;min-height:0;grid-template-rows:minmax(0,1fr)}
+#iso-designs .navigation{min-height:0;overflow-y:auto}
+#iso-designs .workspace{min-height:0;overflow:hidden}
+#iso-designs .workspace>.files-and-detail{flex:0 1 auto;min-height:0;grid-template-rows:minmax(0,1fr)}
+#iso-designs #file-list,#iso-designs #inspector{min-height:0;max-height:100%;overflow-y:auto}
+#iso-designs #file-list .list-header{position:sticky;top:0;z-index:1;background:var(--bg);box-shadow:0 -12px 0 var(--bg)}
+#iso-designs .workspace>#missing:not(:empty){flex:0 0 auto;max-height:30vh;overflow-y:auto}
+/* История обновлений — выезжающая панель справа, со своей прокруткой. */
+#iso-designs #history:not([hidden]){position:fixed;top:0;right:0;bottom:0;width:min(460px,100vw);margin:0;padding:22px 24px;
+  overflow-y:auto;background:var(--surface);border-left:1px solid var(--line);box-shadow:-12px 0 32px rgba(0,0,0,.45);z-index:20}
+/* Сообщение о копировании — всплывашка в правом нижнем углу. */
+#iso-designs #copy-message:not(:empty){position:fixed;right:24px;bottom:24px;margin:0;z-index:30;max-width:360px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
