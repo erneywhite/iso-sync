@@ -3,6 +3,7 @@
 const root=document.getElementById('iso-designs');
 const catalog=window.ISO_ARCHIVE_DATA.catalog;
 const history=window.ISO_ARCHIVE_DATA.history;
+const meta=window.ISO_ARCHIVE_DATA.meta||{};
 const $=id=>root.querySelector('#'+id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const symbols={all:'≡',AlmaLinux:'Al',ArchLinux:'Ar',CentOS:'Ce',Debian:'De',Proxmox:'Px',Ubuntu:'Ub',Windows:'Wi'};
@@ -11,13 +12,19 @@ const family=n=>n.startsWith('ProxmoxVE_')?'Proxmox VE':n.startsWith('Proxmox_Ba
 const compare=(a,b)=>b.name.localeCompare(a.name,'en',{numeric:true});
 const files=catalog.flatMap(g=>(g.children||[]).map(f=>({...f,group:g.name,id:g.name+'/'+f.name})).concat(g.type!=='dir'?[{...g,group:'',id:g.name}]:[]));
 const newest=new Set();catalog.forEach(g=>{const grouped={};(g.children||[]).forEach(f=>(grouped[family(f.name)]??=[]).push(f));Object.values(grouped).forEach(a=>{a.sort(compare);if(a.length>1||/_\d/.test(a[0].name)&&g.name!=='Windows')newest.add(g.name+'/'+a[0].name)})});
-const size=n=>(n/1073741824).toLocaleString('ru-RU',{minimumFractionDigits:1,maximumFractionDigits:1})+' GiB';
+// Единицу выбираем по размеру (как в старом humanSize): B/KB/MB/GB/TB.
+const size=n=>{if(!n)return'0 B';const u=['B','KB','MB','GB','TB'];let i=0,x=n;while(x>=1024&&i<u.length-1){x/=1024;i++}return(x<10?x.toLocaleString('ru-RU',{minimumFractionDigits:1,maximumFractionDigits:1}):Math.round(x).toLocaleString('ru-RU'))+' '+u[i];};
+const fmtIso=iso=>{if(!iso)return'—';try{return new Date(iso).toLocaleString('ru-RU')}catch(e){return iso}};
 const date=n=>new Date(n*1000).toLocaleDateString('ru-RU',{timeZone:'Europe/Riga'});
 const url=f=>window.location.origin+'/files/'+(f.group?encodeURIComponent(f.group)+'/':'')+encodeURIComponent(f.name);
 const clean=f=>f.name.replace(/\.iso$/i,'').replace(/_/g,' ');
 const saved={}; // При открытии показываем утверждённый Workbench / Ubuntu.
 let state={mode:'workbench',group:catalog.some(g=>g.name===saved.group)||saved.group==='all'?saved.group:catalog.some(g=>g.name==='Ubuntu')?'Ubuntu':(catalog[0]||{name:'all'}).name,query:'',sort:'version',selected:'',radius:14};
 const initial=files.filter(f=>state.group==='all'||f.group===state.group).sort(compare)[0];state.selected=initial?initial.id:'';
+// Общий размер и дата последней проверки: строки ISO из index.php форматируем
+// в браузере (PHP живёт в UTC-зоне сервера, даты на странице — локальные).
+try{$('total-size').textContent=size(meta.total_size||0)}catch(_){}
+try{$('last-check').textContent=fmtIso(meta.last_check)}catch(_){}
 function persist(){} // В демонстрации состояние хранится только до перезагрузки.
 function icons(){if(globalThis.lucide)lucide.createIcons({attrs:{width:18,height:18}})}
 function visibleFiles(){return files.filter(f=>(state.query?true:(state.group==='all'||f.group===state.group))&&(!state.query||(f.name+' '+f.group+' '+f.type).toLowerCase().includes(state.query.toLowerCase()))).sort(state.sort==='date'?(a,b)=>b.mtime-a.mtime:state.sort==='size'?(a,b)=>b.size-a.size:compare)}

@@ -242,36 +242,27 @@ foreach ($storageDataPoints as $p) {
 }
 
 /* ===== Подписи для каркаса Workbench (assets/app.js) =====
-   Счётчики и подпись «Проверка» в HTML намеренно вычисляем по доступным
-   пользователю данным — см. MIGRATION.md §3 (демо показывало статичные цифры).
+   Счётчики в HTML намеренно вычисляем по доступным пользователю данным —
+   см. MIGRATION.md §3 (демо показывало статичные цифры). Общий размер и дату
+   последней проверки передаём в JS строками (ISO), чтобы форматировать их в
+   браузере: PHP живёт в UTC-зоне сервера, а даты на странице — локальные
+   (assets/app.js, как в старом index.php: toLocaleString('ru-RU')).
    mbstring в боевом PHP отсутствует — только ASCII-регулярки. */
 $uiPlural = static function (int $n, string $one, string $few, string $many): string {
     $n = $n % 100;
     if ($n >= 11 && $n <= 14) return $many;
     return match ($n % 10) {
-        1      => $one,
-        2..4   => $few,
+        1       => $one,
+        2, 3, 4 => $few,
         default => $many,
     };
 };
 
-$uiTotalSize = '';
-if ($totalSize > 0) {
-    $gb = $totalSize / 1073741824;
-    $uiTotalSize = str_replace('.', ',', number_format($gb, 1)) . ' GiB';
-}
-
 $uiSectionCount = count(array_filter($items, static fn ($it) => ($it['type'] ?? '') === 'dir'));
 
-$uiLastCheck = '—';
+$uiLastCheckIso = '';
 if (is_array($lastRun)) {
-    $ts = (string)($lastRun['finished_at'] ?? $lastRun['started_at'] ?? '');
-    if ($ts !== '') {
-        $epoch = strtotime($ts);
-        if ($epoch !== false) {
-            $uiLastCheck = date('d F', $epoch);
-        }
-    }
+    $uiLastCheckIso = (string)($lastRun['finished_at'] ?? $lastRun['started_at'] ?? '');
 }
 ?>
 <!doctype html>
@@ -290,7 +281,7 @@ if (is_array($lastRun)) {
 <div id="iso-designs" data-mode="workbench" aria-label="ISO-архив">
   <div class="product">
     <header class="masthead"><a class="brand" href="https://iso.erney.monster/" target="_blank" rel="noopener"><span class="brand-icon">ew<span>↗</span></span><span>Erney<span class="brand-second"> / iso archive</span></span></a><div class="mast-right"><span>Личное зеркало дистрибутивов</span><button class="cursor-interaction quiet" id="history-open"><i data-lucide="history" aria-hidden="true"></i> Обновления</button></div></header>
-    <div class="workarea"><aside class="navigation"><div class="navcaption">БИБЛИОТЕКА</div><nav id="folders" aria-label="Разделы архива"></nav><div class="sidebar-bottom"><span class="smallcaps">ПУБЛИЧНЫЙ АРХИВ</span><strong><?php echo (int)$totalFiles; ?> <small><?php echo $uiPlural($totalFiles, 'файл', 'файла', 'файлов'); ?></small></strong><span><?php echo $uiTotalSize; ?> · <?php echo (int)$uiSectionCount; ?> разделов</span><div class="storage-line"></div><span>Проверка: <?php echo $uiLastCheck; ?></span></div></aside>
+    <div class="workarea"><aside class="navigation"><div class="navcaption">БИБЛИОТЕКА</div><nav id="folders" aria-label="Разделы архива"></nav><div class="sidebar-bottom"><span class="smallcaps">ПУБЛИЧНЫЙ АРХИВ</span><strong><?php echo (int)$totalFiles; ?> <small><?php echo $uiPlural($totalFiles, 'файл', 'файла', 'файлов'); ?></small></strong><span><span id="total-size"></span> · <?php echo (int)$uiSectionCount; ?> разделов</span><div class="storage-line"></div><span>Проверка: <span id="last-check" title="<?php echo htmlspecialchars($uiLastCheckIso, ENT_QUOTES); ?>">—</span></span></div></aside>
     <main class="workspace"><div class="heading-line"><div><div class="eyebrow">ISO.ERNEY.MONSTER <span>/ БИБЛИОТЕКА</span></div><h1 id="section-title">Ubuntu<span class="title-dot">.</span></h1><p id="section-description">Образы Ubuntu в вашем архиве</p></div><div class="heading-meta"><b id="group-count">5</b><span>файлов в разделе</span></div></div>
       <div class="searchrow"><label class="searchbox"><i data-lucide="search" aria-hidden="true"></i><input id="iso-query" aria-label="Поиск по имени или SHA-256" placeholder="Найти образ или SHA-256…" autocomplete="off"><kbd>Ctrl K</kbd><button class="cursor-interaction clear" id="clear-query" aria-label="Очистить поиск" hidden>×</button></label><select id="sort" aria-label="Сортировка"><option value="version">По версии</option><option value="date">По дате файла</option><option value="size">По размеру</option></select></div>
       <div id="feature"></div><div class="results-head"><span id="results-count" aria-live="polite">5 файлов</span><span class="hashhint">SHA-256 доступен для каждого файла</span></div>
@@ -308,7 +299,7 @@ if (is_array($lastRun)) {
     // PHP-кодом; JSON кодируется с HEX-флагами, чтобы экранировать <, &, ' и " .
     window.ISO_ARCHIVE_DATA = <?php
     echo json_encode(
-        ['catalog' => $items, 'history' => $history],
+        ['catalog' => $items, 'history' => $history, 'meta' => ['total_size' => $totalSize, 'last_check' => $uiLastCheckIso]],
         JSON_UNESCAPED_UNICODE
         | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
     );
