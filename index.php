@@ -290,13 +290,13 @@ if (is_array($lastRun)) {
 <meta name="description" content="Личное зеркало дистрибутивов Erney White.">
 <title>Хранилище iso-файлов</title>
 <link rel="icon" href="favicon.ico" type="image/x-icon">
-<link rel="stylesheet" href="assets/styles.css?v=workbench-20260926-3">
+<link rel="stylesheet" href="assets/styles.css?v=workbench-20260927-1">
 <script defer src="assets/vendor/lucide.js?v=workbench-20260926"></script>
 </head>
 <body>
 <div id="iso-designs" data-mode="workbench" aria-label="ISO-архив">
   <div class="product">
-    <header class="masthead"><a class="brand" href="https://iso.erney.monster/" target="_blank" rel="noopener"><img class="brand-icon" src="favicon.ico" alt="Эмблема iso-архива"><span>Erney<span class="brand-second"> / iso archive</span></span></a><div class="mast-right"><span>Личное зеркало дистрибутивов</span><button class="cursor-interaction quiet" id="history-open"><i data-lucide="history" aria-hidden="true"></i> Обновления</button></div></header>
+    <header class="masthead"><a class="brand" href="https://iso.erney.monster/" target="_blank" rel="noopener"><img class="brand-icon" src="favicon.ico" alt="Эмблема iso-архива"><span>iso-mirror</span></a><div class="mast-right"><span>Личное зеркало дистрибутивов</span><button class="cursor-interaction quiet" id="history-open"><i data-lucide="history" aria-hidden="true"></i> Обновления</button></div></header>
     <div class="workarea"><aside class="navigation"><div class="navcaption">БИБЛИОТЕКА</div><nav id="folders" aria-label="Разделы архива"></nav><div class="sidebar-bottom"><span class="smallcaps">ПУБЛИЧНЫЙ АРХИВ</span><strong><?php echo (int)$totalFiles; ?> <small><?php echo $uiPlural($totalFiles, 'файл', 'файла', 'файлов'); ?></small></strong><span><span id="total-size"></span> · <?php echo (int)$uiSectionCount; ?> <?php echo $uiSectionCountWord; ?></span><div class="storage-line"></div><div id="check" aria-label="Сводка последней проверки"></div></div></aside>
     <main class="workspace"><div class="heading-line"><div><div class="eyebrow">ISO.ERNEY.MONSTER <span>/ БИБЛИОТЕКА</span></div><h1 id="section-title">Ubuntu<span class="title-dot">.</span></h1><p id="section-description">Образы Ubuntu в вашем архиве</p></div><div class="heading-meta"><b id="group-count">5</b><span>файлов в разделе</span></div></div>
       <div class="searchrow"><label class="searchbox"><i data-lucide="search" aria-hidden="true"></i><input id="iso-query" aria-label="Поиск по имени или SHA-256" placeholder="Найти образ или SHA-256…" autocomplete="off"><kbd>Ctrl K</kbd><button class="cursor-interaction clear" id="clear-query" aria-label="Очистить поиск" hidden>×</button></label><select id="sort" aria-label="Сортировка"><option value="version">По версии</option><option value="date">По дате файла</option><option value="size">По размеру</option></select></div>
@@ -304,7 +304,7 @@ if (is_array($lastRun)) {
       <div class="files-and-detail"><section id="file-list" aria-label="Файлы"></section><aside id="inspector" aria-label="Сведения о выбранном файле"></aside></div>
       <div id="missing" aria-label="Отсутствующие файлы"></div>
       <div id="empty" hidden><i data-lucide="search-x" aria-hidden="true"></i><h2>Ничего не найдено</h2><p>Попробуйте название системы, часть имени или SHA-256.</p><button class="cursor-interaction quiet" id="reset-search">Сбросить поиск</button></div>
-      <footer class="archive-footer"><span>Erney White <span class="sep">/</span> ISO archive</span><span>Личное зеркало дистрибутивов</span></footer>
+      <footer class="archive-footer"><span><a href="https://github.com/erneywhite" target="_blank" rel="noopener">Erney White</a> <span class="sep">/</span> <a href="https://github.com/erneywhite/iso-sync" target="_blank" rel="noopener">ISO mirror</a></span><span>Личное зеркало дистрибутивов</span></footer>
     </main></div>
     <section id="history" hidden aria-label="История обновлений"><div class="history-heading"><h2>История обновлений</h2><button class="cursor-interaction quiet" id="history-close">Закрыть ×</button></div><div id="history-items"></div></section>
     <div id="copy-message" role="status" aria-live="polite"></div>
@@ -336,6 +336,6 @@ if (is_array($lastRun)) {
     );
     ?>;
     </script>
-    <script defer src="assets/app.js?v=workbench-20260926-3"></script>
+    <script defer src="assets/app.js?v=workbench-20260927-1"></script>
 </body>
 </html>
