@@ -9,7 +9,7 @@ html,body { margin:0; background:#111216; }
 #iso-designs button{color:inherit}
 #iso-designs button,#iso-designs select{min-height:42px}
 #iso-designs a{text-decoration:none;color:inherit}
-#iso-designs [hidden]{display:none!important}
+#iso-designs [hidden]:not(#history){display:none!important} /* #history прячется сдвигом — см. ниже */
 #iso-designs .comparebar{display:flex;align-items:center;gap:18px;flex-wrap:wrap;background:#25262b;color:#eeeeF2;padding:13px 20px;border-bottom:1px solid #44454e;font-size:12px;letter-spacing:.07em}
 #iso-designs .comparebar nav{display:flex;gap:4px;flex-wrap:wrap}
 #iso-designs .comparebar button{border:0;background:transparent;padding:9px 14px;border-radius:7px;font-size:14px;letter-spacing:0;color:#bbbbc5}
@@ -443,8 +443,19 @@ html,body{overflow:hidden}
 #iso-designs #file-list,#iso-designs #inspector{min-height:0;max-height:100%;overflow-y:auto}
 #iso-designs #file-list .list-header{position:sticky;top:0;z-index:1;background:var(--bg);box-shadow:0 -12px 0 var(--bg)}
 #iso-designs .workspace>#missing:not(:empty){flex:0 0 auto;max-height:30vh;overflow-y:auto}
-/* История обновлений — выезжающая панель справа, со своей прокруткой. */
-#iso-designs #history:not([hidden]){position:fixed;top:0;right:0;bottom:0;width:min(460px,100vw);margin:0;padding:22px 24px;
-  overflow-y:auto;background:var(--surface);border-left:1px solid var(--line);box-shadow:-12px 0 32px rgba(0,0,0,.45);z-index:20}
+/* История обновлений — панель выезжает справа (transform), со своей прокруткой. [hidden] не
+   убирает её из вёрстки, а уводит за край и прячет visibility — так работает анимация, а скрытая
+   панель недоступна ни мыши, ни Tab. Кнопка «Закрыть» стоит ровно на месте «Обновления»
+   (верх 18px, правый край 25px; ширину подгоняет app.js) — открыть и закрыть, не двигая мышь. */
+#iso-designs #history,#iso-designs #history[hidden]{display:block;position:fixed;top:0;right:0;bottom:0;width:min(460px,100vw);margin:0;
+  padding:18px 25px 22px 24px;overflow-y:auto;background:var(--surface);border-left:1px solid var(--line);border-top:0;
+  box-shadow:-12px 0 32px rgba(0,0,0,.45);z-index:20;transform:translateX(0);visibility:visible;
+  transition:transform .25s ease,visibility 0s linear 0s}
+#iso-designs #history[hidden]{transform:translateX(100%);visibility:hidden;box-shadow:none;
+  transition:transform .25s ease,visibility 0s linear .25s,box-shadow 0s linear .25s}
+#iso-designs #history .history-heading{min-height:42px}
+#iso-designs #history .history-heading h2{margin:0}
+#iso-designs #history-close{justify-content:center}
+@media (prefers-reduced-motion:reduce){#iso-designs #history,#iso-designs #history[hidden]{transition:none}}
 /* Сообщение о копировании — всплывашка в правом нижнем углу. */
 #iso-designs #copy-message:not(:empty){position:fixed;right:24px;bottom:24px;margin:0;z-index:30;max-width:360px;box-shadow:0 8px 24px rgba(0,0,0,.4)}

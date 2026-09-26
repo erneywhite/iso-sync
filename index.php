@@ -290,7 +290,7 @@ if (is_array($lastRun)) {
 <meta name="description" content="Личное зеркало дистрибутивов Erney White.">
 <title>Хранилище iso-файлов</title>
 <link rel="icon" href="favicon.ico" type="image/x-icon">
-<link rel="stylesheet" href="assets/styles.css?v=workbench-20260927-5">
+<link rel="stylesheet" href="assets/styles.css?v=workbench-20260927-7">
 <script defer src="assets/vendor/lucide.js?v=workbench-20260926"></script>
 </head>
 <body>
@@ -336,6 +336,6 @@ if (is_array($lastRun)) {
     );
     ?>;
     </script>
-    <script defer src="assets/app.js?v=workbench-20260927-5"></script>
+    <script defer src="assets/app.js?v=workbench-20260927-6"></script>
 </body>
 </html>
