@@ -407,7 +407,6 @@ foreach ($cfg['builds'] as $key => $e) {
             $exit = 1;
             continue;
         }
-        @chmod($convDir . '/convert.sh', 0755);
         ok('конвертер готов');
     } else {
         inf('конвертер уже скачан');
@@ -428,7 +427,13 @@ foreach ($cfg['builds'] as $key => $e) {
         inf('конвертация в ISO — это надолго (десятки минут)…');
         $log->info('UUP: старт конвертации', ['entry' => $key, 'build' => $pick['build']]);
 
-        $rc = runLive('./convert.sh wim ' . escapeshellarg($uupsDir) . ' 0', $convDir);
+        // Права на запуск ставим перед каждой конвертацией, а сам скрипт зовём через bash:
+        // конвертер скачан один раз и лежит в каталоге сайта, а там права могут сбросить
+        // (aaPanel «чинит» их на 644) — тогда ./convert.sh падал с Permission denied, код 126.
+        foreach (glob($convDir . '/*.sh') ?: [] as $sh) {
+            @chmod($sh, 0755);
+        }
+        $rc = runLive('bash ./convert.sh wim ' . escapeshellarg($uupsDir) . ' 0', $convDir);
         if ($rc !== 0) {
             bad("convert.sh завершился с кодом {$rc}");
             $log->error('UUP: конвертация не удалась', ['entry' => $key, 'code' => $rc]);
